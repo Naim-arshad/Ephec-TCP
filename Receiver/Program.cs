@@ -6,7 +6,7 @@ namespace Receiver
     {
         static void Main(string[] args)
         {
-            Packet packet = new Packet(0xFFFF, 11000, Packet.Flags.SYN | Packet.Flags.ACK, new byte[0xFFFF]);
+            Packet packet = new Packet(11000, Packet.Flags.ACK, new byte[0xFFFF]);
             Console.WriteLine("Hello, World!");
         }
     }
