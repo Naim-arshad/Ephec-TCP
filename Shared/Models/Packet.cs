@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System;
+using System.Linq;
 using System.Buffers.Binary;
 
 namespace Shared.Models
@@ -23,14 +24,17 @@ namespace Shared.Models
         // ushort a pour seul valeur possible 16 bits non signé (0 à 65535)
         public Packet(ushort sequence, PacketFlags flags, byte[] data)
         {
-            if (data.Length > 65535 || data.Length <= 0)
+            if (data is null)
+                throw new ArgumentNullException(nameof(data));
+
+            if (data.Length > 65535)
                 throw new ArgumentException("La longueur de data dépasse la taille maximal de 16 bits (65535)\n" +
-                    "data lenght : " + data.Length);
+                    "data Length : " + data.Length);
             if (!AreFlagsValid(flags))
                 throw new InvalidOperationException($"Combinaison de flags invalide : {flags}");
             SequenceNumber = sequence;
             Flags = (byte)flags;
-            Data = data;
+            Data = data.ToArray(); //Une copie pour empecher les modifications externes si la référence est conservée de data
 
         }
 
@@ -63,7 +67,7 @@ namespace Shared.Models
             return count;
         }
 
-        public byte[] serialisation()
+        public byte[] Serialize()
         {
             // Le paquet est composé de : 0-1 : longueur des données (16 bits) 2-3 : numéro de séquence (16 bits) 4 : flags (8 bits) 5-n : données
             int packetLength = 5 + Data.Length;
@@ -86,10 +90,26 @@ namespace Shared.Models
             return stream.ToArray();
         }
 
+        public static Packet Deserialize(byte[] packetBytes)
+        {
+            if (packetBytes is null)
+                throw new ArgumentNullException(nameof(packetBytes));
+            if (packetBytes.Length < 5)
+                throw new ArgumentException("Le tableau d'octets est trop court pour contenir un paquet valide.");
+            ushort dataLength = BinaryPrimitives.ReadUInt16BigEndian(packetBytes.AsSpan(0, 2));
+            ushort sequenceNumber = BinaryPrimitives.ReadUInt16BigEndian(packetBytes.AsSpan(2, 2));
+            byte flags = packetBytes[4];
+            if (packetBytes.Length != 5 + dataLength)
+                throw new ArgumentException("La longueur des données ne correspond pas à la taille du tableau d'octets.");
+            byte[] data = new byte[dataLength];
+            Array.Copy(packetBytes, 5, data, 0, dataLength);
+            return new Packet(sequenceNumber, (PacketFlags)flags, data);
+        }
+
         public static string BytesToHexString(byte[] bytes)
         {
             // Utilise BitConverter pour convertir chaque octet en sa représentation hexadécimale
-            // et joint le tout avec des espaces pour la lisibilité.
+            // et joint le tout avec des espaces pour une meilleur lisibilité.
             return string.Join(" ", bytes.Select(b => b.ToString("X2")));
         }
     }
