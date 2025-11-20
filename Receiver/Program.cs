@@ -6,8 +6,8 @@ namespace Receiver
     {
         static void Main(string[] args)
         {
-            Packet packet = new Packet(11000, Packet.Flags.ACK, new byte[0xFFFF]);
-            Console.WriteLine("Hello, World!");
+            Packet packet = new Packet(0xAAAA, Packet.PacketFlags.FIN, new byte[0xF]);
+            Console.WriteLine(Packet.BytesToHexString(packet.serialisation()));
         }
     }
 }
