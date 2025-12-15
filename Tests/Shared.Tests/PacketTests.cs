@@ -12,28 +12,28 @@ namespace Shared.Tests
         [Fact]
         public void Constructor_NullData_ThrowsArgumentNullException()
         {
-            Assert.Throws<ArgumentNullException>(() => new Packet(0, Packet.PacketFlags.SYN, null));
+            Assert.Throws<ArgumentNullException>(() => new Segment(0, Segment.PacketFlags.SYN, null));
         }
 
         [Fact]
         public void Constructor_DataTooLarge_ThrowsArgumentException()
         {
             byte[] tooLarge = new byte[65536]; // > 65535
-            Assert.Throws<ArgumentException>(() => new Packet(0, Packet.PacketFlags.SYN, tooLarge));
+            Assert.Throws<ArgumentException>(() => new Segment(0, Segment.PacketFlags.SYN, tooLarge));
         }
 
         [Fact]
         public void Constructor_InvalidFlags_SynAndFin_ThrowsInvalidOperationException()
         {
             byte[] data = Array.Empty<byte>();
-            Assert.Throws<InvalidOperationException>(() => new Packet(0, Packet.PacketFlags.SYN | Packet.PacketFlags.FIN, data));
+            Assert.Throws<InvalidOperationException>(() => new Segment(0, Segment.PacketFlags.SYN | Segment.PacketFlags.FIN, data));
         }
 
         [Fact]
         public void Constructor_InvalidFlags_AckAndRst_ThrowsInvalidOperationException()
         {
             byte[] data = Array.Empty<byte>();
-            Assert.Throws<InvalidOperationException>(() => new Packet(0, Packet.PacketFlags.ACK | Packet.PacketFlags.RST, data));
+            Assert.Throws<InvalidOperationException>(() => new Segment(0, Segment.PacketFlags.ACK | Segment.PacketFlags.RST, data));
         }
 
         [Fact]
@@ -41,8 +41,8 @@ namespace Shared.Tests
         {
             byte[] data = new byte[] { 0xAA, 0xBB };
             ushort seq = 0x1234;
-            var flags = Packet.PacketFlags.SYN | Packet.PacketFlags.ACK;
-            var pkt = new Packet(seq, flags, data);
+            var flags = Segment.PacketFlags.SYN | Segment.PacketFlags.ACK;
+            var pkt = new Segment(seq, flags, data);
 
             byte[] bytes = pkt.Serialize();
 
@@ -64,11 +64,11 @@ namespace Shared.Tests
         {
             byte[] data = new byte[] { 1, 2, 3, 4, 5 };
             ushort seq = 0xAAAA;
-            var flags = Packet.PacketFlags.FIN;
-            var pkt = new Packet(seq, flags, data);
+            var flags = Segment.PacketFlags.FIN;
+            var pkt = new Segment(seq, flags, data);
 
             byte[] bin = pkt.Serialize();
-            Packet deserialized = Packet.Deserialize(bin);
+            Segment deserialized = Segment.Deserialize(bin);
 
             Assert.Equal(pkt.SequenceNumber, deserialized.SequenceNumber);
             Assert.Equal(pkt.Flags, deserialized.Flags);
@@ -78,14 +78,14 @@ namespace Shared.Tests
         [Fact]
         public void Deserialize_Null_ThrowsArgumentNullException()
         {
-            Assert.Throws<ArgumentNullException>(() => Packet.Deserialize(null));
+            Assert.Throws<ArgumentNullException>(() => Segment.Deserialize(null));
         }
 
         [Fact]
         public void Deserialize_TooShort_ThrowsArgumentException()
         {
             byte[] tooShort = new byte[4];
-            Assert.Throws<ArgumentException>(() => Packet.Deserialize(tooShort));
+            Assert.Throws<ArgumentException>(() => Segment.Deserialize(tooShort));
         }
 
         [Fact]
@@ -93,7 +93,7 @@ namespace Shared.Tests
         {
             ushort declaredLength = 5;
             ushort seq = 0x0001;
-            byte flags = (byte)Packet.PacketFlags.SYN;
+            byte flags = (byte)Segment.PacketFlags.SYN;
             byte[] payload = new byte[3]; // réel = 3
             byte[] buffer = new byte[5 + payload.Length];
 
@@ -102,23 +102,23 @@ namespace Shared.Tests
             buffer[4] = flags;
             Array.Copy(payload, 0, buffer, 5, payload.Length);
 
-            Assert.Throws<ArgumentException>(() => Packet.Deserialize(buffer));
+            Assert.Throws<ArgumentException>(() => Segment.Deserialize(buffer));
         }
 
         [Fact]
         public void BytesToHexString_FormatsCorrectly()
         {
             byte[] bytes = new byte[] { 0x0A, 0x1B, 0xFF };
-            string hex = Packet.BytesToHexString(bytes);
+            string hex = Segment.BytesToHexString(bytes);
             Assert.Equal("0A 1B FF", hex);
         }
 
         [Fact]
         public void Private_CountSetBits_WorksViaReflection()
         {
-            var pkt = new Packet(0, Packet.PacketFlags.SYN, Array.Empty<byte>());
+            var pkt = new Segment(0, Segment.PacketFlags.SYN, Array.Empty<byte>());
 
-            MethodInfo mi = typeof(Packet).GetMethod("CountSetBits", BindingFlags.NonPublic | BindingFlags.Instance);
+            MethodInfo mi = typeof(Segment).GetMethod("CountSetBits", BindingFlags.NonPublic | BindingFlags.Instance);
             Assert.NotNull(mi);
 
             object result = mi.Invoke(pkt, new object[] { (byte)0b00001011 }); // 3 bits à 1
@@ -129,21 +129,21 @@ namespace Shared.Tests
         [Fact]
         public void Private_AreFlagsValid_ReturnsExpectedViaReflection()
         {
-            var pkt = new Packet(0, Packet.PacketFlags.SYN, Array.Empty<byte>());
+            var pkt = new Segment(0, Segment.PacketFlags.SYN, Array.Empty<byte>());
 
-            MethodInfo mi = typeof(Packet).GetMethod("AreFlagsValid", BindingFlags.NonPublic | BindingFlags.Instance);
+            MethodInfo mi = typeof(Segment).GetMethod("AreFlagsValid", BindingFlags.NonPublic | BindingFlags.Instance);
             Assert.NotNull(mi);
 
-            bool synValid = (bool)mi.Invoke(pkt, new object[] { Packet.PacketFlags.SYN });
+            bool synValid = (bool)mi.Invoke(pkt, new object[] { Segment.PacketFlags.SYN });
             Assert.True(synValid);
 
-            bool synFinValid = (bool)mi.Invoke(pkt, new object[] { Packet.PacketFlags.SYN | Packet.PacketFlags.FIN });
+            bool synFinValid = (bool)mi.Invoke(pkt, new object[] { Segment.PacketFlags.SYN | Segment.PacketFlags.FIN });
             Assert.False(synFinValid);
 
-            bool ackRstValid = (bool)mi.Invoke(pkt, new object[] { Packet.PacketFlags.ACK | Packet.PacketFlags.RST });
+            bool ackRstValid = (bool)mi.Invoke(pkt, new object[] { Segment.PacketFlags.ACK | Segment.PacketFlags.RST });
             Assert.False(ackRstValid);
 
-            bool ackValid = (bool)mi.Invoke(pkt, new object[] { Packet.PacketFlags.ACK });
+            bool ackValid = (bool)mi.Invoke(pkt, new object[] { Segment.PacketFlags.ACK });
             Assert.True(ackValid);
         }
     }
