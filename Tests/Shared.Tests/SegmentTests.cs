@@ -7,7 +7,7 @@ using Shared.Models;
 
 namespace Shared.Tests
 {
-    public class PacketTests
+    public class SegmentTests
     {
         [Fact]
         public void Constructor_NullData_ThrowsArgumentNullException()

@@ -1,10 +1,8 @@
-﻿using System;
-using System.Linq;
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 
 namespace Shared.Models
 {
-    public class Packet
+    public class Segment
     {
         public ushort SequenceNumber { get; private set; }
         public byte Flags { get; private set; }
@@ -22,7 +20,7 @@ namespace Shared.Models
 
         // Constructor
         // ushort a pour seul valeur possible 16 bits non signé (0 à 65535)
-        public Packet(ushort sequence, PacketFlags flags, byte[] data)
+        public Segment(ushort sequence, PacketFlags flags, byte[] data)
         {
             if (data is null)
                 throw new ArgumentNullException(nameof(data));
@@ -90,7 +88,7 @@ namespace Shared.Models
             return stream.ToArray();
         }
 
-        public static Packet Deserialize(byte[] packetBytes)
+        public static Segment Deserialize(byte[] packetBytes)
         {
             if (packetBytes is null)
                 throw new ArgumentNullException(nameof(packetBytes));
@@ -103,7 +101,7 @@ namespace Shared.Models
                 throw new ArgumentException("La longueur des données ne correspond pas à la taille du tableau d'octets.");
             byte[] data = new byte[dataLength];
             Array.Copy(packetBytes, 5, data, 0, dataLength);
-            return new Packet(sequenceNumber, (PacketFlags)flags, data);
+            return new Segment(sequenceNumber, (PacketFlags)flags, data);
         }
 
         public static string BytesToHexString(byte[] bytes)

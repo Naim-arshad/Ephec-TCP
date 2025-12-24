@@ -2,4 +2,7 @@
   <Project Path="Receiver/Receiver.csproj" Id="81756649-66b0-496f-bd63-fcf8ff62d0a1" />
   <Project Path="Shared/Shared.csproj" Id="2f0565c9-c171-4e26-9f90-0a47f53c9c2c" />
   <Project Path="Tests/Shared.Tests/Shared.Tests.csproj" Id="b3487da4-57a6-4d7d-84b4-eb13bd09a5f8" />
+  <Project Path="Transmitter/Transmitter.csproj" Id="63472348-9fdf-4385-9804-87f5791cb9a2">
+    <BuildDependency Project="Shared/Shared.csproj" />
+  </Project>
 </Solution>

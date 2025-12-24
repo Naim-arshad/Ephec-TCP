@@ -1,17 +1,40 @@
 ﻿using Shared.Models;
+using Shared.Protocol;
+using System.Net;
+using System.Net.Sockets;
 
 namespace Receiver
 {
     internal class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
-            Packet packet = new Packet(0xAAAA, Packet.PacketFlags.FIN, new byte[0x02]);
+            Segment packet = new Segment(0xAAAA, Segment.PacketFlags.FIN, new byte[0x02]);
             byte[] PacketBinary = packet.Serialize();
-            Console.WriteLine(Packet.BytesToHexString(PacketBinary));
-            Packet deserializedPacket = Packet.Deserialize(PacketBinary);
-            Console.WriteLine(Packet.BytesToHexString(deserializedPacket.Serialize()));
+            Segment packet2 = new Segment(0xFFFF, Segment.PacketFlags.ACK, new byte[0x01]);
+            byte[] PacketBinary2 = packet2.Serialize();
+            Console.WriteLine(Segment.BytesToHexString(PacketBinary));
+            Segment deserializedPacket = Segment.Deserialize(PacketBinary);
+            Console.WriteLine(Segment.BytesToHexString(deserializedPacket.Serialize()));
 
+            UdpTransport receiver = new UdpTransport(11000);
+            receiver.StartServer();
+
+            receiver.OnSegmentReceived += test;
+            
+
+            Console.ReadLine();
+            UdpClient udp = new UdpClient();
+            
+            Console.ReadLine();
+            await receiver.DisposeAsync();
+
+        }
+
+        private static void test(byte[] PacketBinary, IPEndPoint ip)
+        {
+            Segment deserializedPacket = Segment.Deserialize(PacketBinary);
+            Console.WriteLine(Segment.BytesToHexString(deserializedPacket.Serialize()));
         }
     }
 }
