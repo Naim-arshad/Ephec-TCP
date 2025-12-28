@@ -20,7 +20,7 @@ namespace Shared.Models
 
         // Constructor
         // ushort a pour seul valeur possible 16 bits non signé (0 à 65535)
-        public Segment(ushort sequence, PacketFlags flags, byte[] data)
+        public Segment(ushort sequence, SegmentFlags flags, byte[] data)
         {
             if (data is null)
                 throw new ArgumentNullException(nameof(data));
@@ -28,41 +28,10 @@ namespace Shared.Models
             if (data.Length > 65535)
                 throw new ArgumentException("La longueur de data dépasse la taille maximal de 16 bits (65535)\n" +
                     "data Length : " + data.Length);
-            if (!AreFlagsValid(flags))
-                throw new InvalidOperationException($"Combinaison de flags invalide : {flags}");
             SequenceNumber = sequence;
-            Flags = (byte)flags;
+            Flags = flags.Value;
             Data = data.ToArray(); //Une copie pour empecher les modifications externes si la référence est conservée de data
 
-        }
-
-        // Méthode pour vérifier la validité des flags
-        private bool AreFlagsValid(PacketFlags flags)
-        {
-            const PacketFlags SynFinRstMask = PacketFlags.SYN | PacketFlags.FIN | PacketFlags.RST; // Masque pour SYN, FIN et RST : 0000 1101
-            const PacketFlags AckRstMask = PacketFlags.ACK | PacketFlags.RST; // Masque pour ACK et RST : 0000 1010
-
-            // 1) Vérifie qu'il n'y a pas plus d'un flag parmi SYN / FIN / RST
-            var activeMaskFlags = (byte)(flags & SynFinRstMask);
-            if (CountSetBits(activeMaskFlags) > 1)
-                return false;
-
-            // 2) Interdire la combinaison ACK + RST
-            if ((flags & AckRstMask) == AckRstMask)
-                return false;
-
-            return true;
-        }
-
-        private int CountSetBits(byte flags)
-        {
-            int count = 0;
-            while (flags != 0)
-            {
-                count += flags & 1;
-                flags >>= 1;
-            }
-            return count;
         }
 
         public byte[] Serialize()
