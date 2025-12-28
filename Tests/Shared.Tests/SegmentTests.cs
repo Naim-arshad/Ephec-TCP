@@ -118,10 +118,10 @@ namespace Shared.Tests
         {
             var pkt = new Segment(0, Segment.PacketFlags.SYN, Array.Empty<byte>());
 
-            MethodInfo mi = typeof(Segment).GetMethod("CountSetBits", BindingFlags.NonPublic | BindingFlags.Instance);
+            MethodInfo? mi = typeof(Segment).GetMethod("CountSetBits", BindingFlags.NonPublic | BindingFlags.Instance);
             Assert.NotNull(mi);
 
-            object result = mi.Invoke(pkt, new object[] { (byte)0b00001011 }); // 3 bits à 1
+            object? result = mi.Invoke(pkt, new object[] { (byte)0b00001011 }); // 3 bits à 1
             Assert.IsType<int>(result);
             Assert.Equal(3, (int)result);
         }

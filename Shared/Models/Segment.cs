@@ -98,7 +98,7 @@ namespace Shared.Models
             ushort sequenceNumber = BinaryPrimitives.ReadUInt16BigEndian(packetBytes.AsSpan(2, 2));
             byte flags = packetBytes[4];
             if (packetBytes.Length != 5 + dataLength)
-                throw new ArgumentException("La longueur des données ne correspond pas à la taille du tableau d'octets.");
+                throw new ArgumentException("La longueur des données ne correspond pas à la taille du tableau d'octets.\n" + BytesToHexString(packetBytes));
             byte[] data = new byte[dataLength];
             Array.Copy(packetBytes, 5, data, 0, dataLength);
             return new Segment(sequenceNumber, (PacketFlags)flags, data);
