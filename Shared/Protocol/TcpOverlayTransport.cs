@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Text;
 
 namespace Shared.Protocol
 {
@@ -22,24 +21,62 @@ namespace Shared.Protocol
 
         public void OnSegmentReceived(byte[] PacketBinary, IPEndPoint ip)
         {
-            if(_mapConnection.ContainsKey(ip.ToString()))
+            Segment segment = Segment.Deserialize(PacketBinary);
+
+            if (!_mapConnection.ContainsKey(ip.ToString()))
             {
-                Segment segment = Segment.Deserialize(PacketBinary);
-                if(/*TODO*/true)
+                if (segment.Flags.Value == (byte)SegmentFlags.FlagOptions.Syn)
+                    HandleSYN(segment, ip);
+                else 
                 {
-                    ReceiverHandleSYN(segment, ip);
+                    Console.WriteLine("Flags autre que Syn pour une IP non reconnu" + Segment.BytesToHexString(PacketBinary));
                 }
+                    
+            }
+            else
+            {
+                switch (segment.Flags.Value)
+                {
+                    case ((byte)SegmentFlags.FlagOptions.Syn | (byte)SegmentFlags.FlagOptions.Ack):
+                        Console.WriteLine("TODO: Gérer le SYN-ACK");
+                        break;
+                    // Ajouter d'autres cas pour gérer différents types de segments
+                    case (byte)SegmentFlags.FlagOptions.Ack:
+                        Console.WriteLine("TODO: Gérer l'ACK");
+                        break;
+                    default:
+                        throw new Exception("Type de segment non géré");
+                }
+
             }
         }
 
-        private void ReceiverHandleSYN(Segment segment, IPEndPoint ip)
+        private void HandleSYN(Segment segment, IPEndPoint ip)
         {
-            //Implémenter la logique de gestion du SYN
+            Console.WriteLine($"Nouveau SYN reçu de {ip.ToString()}");
+            _mapConnection.Add(ip.ToString(), new ConnectionInfo(ip));
+            _mapConnection[ip.ToString()].State = (ConnectionInfo.ConnectionState.InitiatedConnection);
+            
+            _ = _udpTransport.SendSegmentAsync(
+                new Segment(
+                    sequence: 0,
+                    flags: new SegmentFlags((byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack)),
+                    data: Array.Empty<byte>()
+                ).Serialize(),
+                ip
+            );
+
         }
 
-        public void TransmitterInitiateConnection(IPEndPoint ip)
+        public async Task sendSyn(IPEndPoint ip)
         {
-            //Implémenter la logique d'envoi du SYN
+            Segment packet = new Segment(0xAAAA, new SegmentFlags(SegmentFlags.FlagOptions.Syn), new byte[0x02]);
+            byte[] PacketBinary = packet.Serialize();
+
+            _ = _udpTransport.SendSegmentAsync(
+                PacketBinary,
+                ip
+            );
         }
     }
 }

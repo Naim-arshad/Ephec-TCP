@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Shared.Models
 {
-    public class SegmentFlags
+    public record SegmentFlags
     {
         public byte Value { get; private set; }
         
@@ -24,6 +24,13 @@ namespace Shared.Models
                 throw new InvalidOperationException($"Combinaison de flags invalide : {options}");
             this.Value = (byte)options;
         }
+        public SegmentFlags(byte value)
+        {
+            FlagOptions options = (FlagOptions)value;
+            if (!AreFlagsValid(options))
+                throw new InvalidOperationException($"Combinaison de flags invalide : {options}");
+            this.Value = value;
+        }
 
         private static bool AreFlagsValid(FlagOptions options)
         {
@@ -41,6 +48,10 @@ namespace Shared.Models
                 return false;
 
             return true;
+        }
+        public static bool IsFlagSet(byte value, FlagOptions flag)
+        {
+            return (value & (byte)flag) == (byte)flag;
         }
     }
 }

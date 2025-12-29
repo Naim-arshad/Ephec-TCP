@@ -5,31 +5,21 @@ namespace Shared.Models
     public class Segment
     {
         public ushort SequenceNumber { get; private set; }
-        public byte Flags { get; private set; }
+        public SegmentFlags Flags { get; private set; }
         public byte[] Data { get; private set; }
-
-        [Flags]
-        public enum PacketFlags : byte
-        {
-            SYN = 1 << 0,
-            ACK = 1 << 1,
-            FIN = 1 << 2,
-            RST = 1 << 3,
-        }
         
 
         // Constructor
         // ushort a pour seul valeur possible 16 bits non signé (0 à 65535)
         public Segment(ushort sequence, SegmentFlags flags, byte[] data)
         {
-            if (data is null)
-                throw new ArgumentNullException(nameof(data));
+            ArgumentNullException.ThrowIfNull(data);
 
             if (data.Length > 65535)
                 throw new ArgumentException("La longueur de data dépasse la taille maximal de 16 bits (65535)\n" +
                     "data Length : " + data.Length);
             SequenceNumber = sequence;
-            Flags = flags.Value;
+            Flags = flags;
             Data = data.ToArray(); //Une copie pour empecher les modifications externes si la référence est conservée de data
 
         }
@@ -49,7 +39,7 @@ namespace Shared.Models
             stream.Write(sequenceBuffer);
 
             Span<byte> flagsBuffer = stackalloc byte[1];
-            flagsBuffer[0] = Flags;
+            flagsBuffer[0] = Flags.Value;
             stream.Write(flagsBuffer);
 
             stream.Write(Data, 0, Data.Length);
@@ -59,18 +49,20 @@ namespace Shared.Models
 
         public static Segment Deserialize(byte[] packetBytes)
         {
-            if (packetBytes is null)
-                throw new ArgumentNullException(nameof(packetBytes));
+            ArgumentNullException.ThrowIfNull(packetBytes);
+
             if (packetBytes.Length < 5)
                 throw new ArgumentException("Le tableau d'octets est trop court pour contenir un paquet valide.");
             ushort dataLength = BinaryPrimitives.ReadUInt16BigEndian(packetBytes.AsSpan(0, 2));
             ushort sequenceNumber = BinaryPrimitives.ReadUInt16BigEndian(packetBytes.AsSpan(2, 2));
-            byte flags = packetBytes[4];
+            SegmentFlags flags = new SegmentFlags(packetBytes[4]);
+
             if (packetBytes.Length != 5 + dataLength)
                 throw new ArgumentException("La longueur des données ne correspond pas à la taille du tableau d'octets.\n" + BytesToHexString(packetBytes));
+
             byte[] data = new byte[dataLength];
             Array.Copy(packetBytes, 5, data, 0, dataLength);
-            return new Segment(sequenceNumber, (PacketFlags)flags, data);
+            return new Segment(sequenceNumber, flags, data);
         }
 
         public static string BytesToHexString(byte[] bytes)
