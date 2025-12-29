@@ -34,9 +34,7 @@ namespace Shared.Models
             BinaryPrimitives.WriteUInt16BigEndian(dataSizeBuffer, (ushort)Data.Length);
             stream.Write(dataSizeBuffer);
 
-            Span<byte> sequenceBuffer = stackalloc byte[2];
-            BinaryPrimitives.WriteUInt16BigEndian(sequenceBuffer, SequenceNumber);
-            stream.Write(sequenceBuffer);
+            stream.Write(GetSequenceToBytes());
 
             Span<byte> flagsBuffer = stackalloc byte[1];
             flagsBuffer[0] = Flags.Value;
@@ -65,11 +63,23 @@ namespace Shared.Models
             return new Segment(sequenceNumber, flags, data);
         }
 
+        public byte[] GetSequenceToBytes()
+        {
+            Span<byte> sequenceBuffer = stackalloc byte[2];
+            BinaryPrimitives.WriteUInt16BigEndian(sequenceBuffer, SequenceNumber);
+            return sequenceBuffer.ToArray();
+        }
+
         public static string BytesToHexString(byte[] bytes)
         {
             // Utilise BitConverter pour convertir chaque octet en sa représentation hexadécimale
             // et joint le tout avec des espaces pour une meilleur lisibilité.
             return string.Join(" ", bytes.Select(b => b.ToString("X2")));
+        }
+
+        public override string ToString()
+        {
+            return $"Segment(SequenceNumber: {SequenceNumber}, Flags: {Flags}, DataLength: {Data.Length})";
         }
     }
 }
