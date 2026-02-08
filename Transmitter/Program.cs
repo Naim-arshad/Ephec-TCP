@@ -1,5 +1,6 @@
 ﻿using Shared.Models;
 using Shared.Protocol;
+using System.Net;
 using System.Net.Sockets;
 using static System.Net.Mime.MediaTypeNames;
 
@@ -17,7 +18,7 @@ namespace Transmitter
             while (key != "q")
             {
                 Console.WriteLine("Sending packet...");
-                await tcpOverlayTransport.sendSyn(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 11000));
+                await tcpOverlayTransport.SendSyn(IPEndPoint.Parse("127.0.0.1:11000"));
                 key = Console.ReadLine();
             }
 

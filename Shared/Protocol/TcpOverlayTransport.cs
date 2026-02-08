@@ -9,11 +9,9 @@ namespace Shared.Protocol
     {
         private readonly Dictionary<string, ConnectionInfo> _mapConnection;
         private readonly UdpTransport _udpTransport;
-        private readonly List<ConnectionInfo> _connections;
         public TcpOverlayTransport(int port)
         {
             _mapConnection = new Dictionary<string, ConnectionInfo>();
-            _connections = new List<ConnectionInfo>();
             _udpTransport = new UdpTransport(port);
             
             _udpTransport.OnSegmentReceived += OnSegmentReceived;
@@ -44,44 +42,55 @@ namespace Shared.Protocol
 
         private void HandleSYN(Segment segmentReceived, IPEndPoint ip)
         {
-            Segment segmentToSend = new(
-                sequence: RandomSequenceNumber(segmentReceived.SequenceNumber),
-                flags: new SegmentFlags((byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack)),
-                data: segmentReceived.GetSequenceToBytes()
-                );
 
-            if (!_mapConnection.ContainsKey(ip.ToString()))
+            ConnectionInfo connectionInfo;
+
+            Console.WriteLine($"Packet reçu {segmentReceived}");
+
+            if (_mapConnection.ContainsKey(ip.ToString()))
+            {
+                Console.WriteLine("SYN reçu (existing ip)");
+                connectionInfo = _mapConnection[ip.ToString()];
+            } else
             {
                 Console.WriteLine("SYN reçu (new ip)");
+                connectionInfo = new(ip);
+                _mapConnection.Add(ip.ToString(), connectionInfo);
+            }
 
-                _mapConnection.Add(ip.ToString(), new ConnectionInfo(ip));
+            Segment segmentToSend;
+
+            if (connectionInfo.State == ConnectionInfo.ConnectionState.Disconnected)
+            {
+                segmentToSend = new(
+                    sequence: RandomSequenceNumber(segmentReceived.SequenceNumber),
+                    flags: new SegmentFlags((byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack)),
+                    data: segmentReceived.GetSequenceToBytes()
+                );
+
                 _mapConnection[ip.ToString()].UpdateConnectionInfo(
-                    ConnectionInfo.ConnectionState.InitiatedConnection,
+                    ConnectionInfo.ConnectionState.InitConnection,
                     segmentReceived,
                     segmentToSend);
             } else
             {
-                Console.WriteLine("SYN reçu (existing ip)");
-                //TODO: gérer le cas où la connexion existe déjà (probablement l'ignorer ou voir si on check l'etat de la connexion)
-            }
-            /*
-            Console.WriteLine($"Nouveau SYN reçu de {ip.ToString()}");
-            _mapConnection.Add(ip.ToString(), new ConnectionInfo(ip));
-            _mapConnection[ip.ToString()].State = (ConnectionInfo.ConnectionState.InitiatedConnection);
-            
-            _ = _udpTransport.SendSegmentAsync(
-                new Segment(
-                    sequence: 0,
-                    flags: new SegmentFlags((byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack)),
-                    data: Array.Empty<byte>()
-                ).Serialize(),
-                ip
-            );
-            */
+                Console.WriteLine("Connexion déjà existante et active, envoie d'un ACK avec la sequence du dernier paquet recu");
 
+                segmentToSend = new(
+                    sequence: RandomSequenceNumber(segmentReceived.SequenceNumber),
+                    flags: new SegmentFlags((byte)(SegmentFlags.FlagOptions.Ack)),
+                    data: segmentReceived.GetSequenceToBytes()
+                );
+
+                _mapConnection[ip.ToString()].UpdateConnectionInfo(
+                _mapConnection[ip.ToString()].State,
+                segmentReceived,
+                segmentToSend);
+            }
+            _ = _udpTransport.SendSegmentAsync(segmentToSend.Serialize(), ip);
         }
 
-        public async Task sendSyn(IPEndPoint ip)
+        public async Task SendSyn(IPEndPoint ip)
         {
             //TODO: implémenter sendSyn (ci-dessous est un code basique pour tester)
             Segment packet = new(0xAAAA, new SegmentFlags(SegmentFlags.FlagOptions.Syn), new byte[0x02]);
@@ -97,8 +106,10 @@ namespace Shared.Protocol
         {
             Random rand = new();
             ushort number = (ushort)rand.Next(0, ushort.MaxValue);
-            if(number == excludeNumber)
-                number++;
+            if (number == excludeNumber && (number + 2) <= ushort.MaxValue)
+                number += 2;
+            else
+                number = 0;
             return number;
         }
     }

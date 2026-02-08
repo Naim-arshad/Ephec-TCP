@@ -6,6 +6,7 @@ namespace Shared.Protocol
     public class UdpTransport : IAsyncDisposable
     {
         private readonly UdpClient _udpClient;
+        const int SIO_UDP_CONNRESET = -1744830452;
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _receiveLoopTask;
         private volatile bool _isRunning;
@@ -19,6 +20,17 @@ namespace Shared.Protocol
                 throw new ArgumentOutOfRangeException(nameof(port), "Port doit être entre 0 et 65535.");
 
             _udpClient = new UdpClient(port);
+
+            try
+            {
+                //Pour ignorer le packet caché de windows ICMP si le port n'est pas ouvert
+                _udpClient.Client.IOControl(
+                    (IOControlCode)SIO_UDP_CONNRESET, 
+                    new byte[] { 0 }, 
+                    null); 
+            } catch
+            {
+            }
             _isRunning = false;
             _disposed = false;
         }
