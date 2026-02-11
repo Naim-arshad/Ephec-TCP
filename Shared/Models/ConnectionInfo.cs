@@ -16,15 +16,18 @@ namespace Shared.Models
         public long LastSentTimes { get; private set; }
         public int RetransmissionCount { get; private set; }
 
-        public ConnectionState State { get; private set; }
-        public enum ConnectionState
+        public State CurrentState { get; private set; }
+        public enum State
         {
-            Disconnected,
-            Connected,
-            InitConnection,
-            ClosingConnection,
-            FailedConnection,
-            ResetConnection,
+            Closed,
+            Established,
+            SynSent,
+            SynReceived,
+            FinWait1,
+            FinWait2,
+            CloseWait,
+            Closing,
+            TimeWait,
         }
 
         public ConnectionInfo(IPEndPoint endpoint)
@@ -32,31 +35,32 @@ namespace Shared.Models
             ArgumentNullException.ThrowIfNull(endpoint);
 
             Endpoint = endpoint;
-            State = ConnectionState.Disconnected;
+            CurrentState = State.Closed;
             RetransmissionCount = 0;
         }
         public void BeginConnection(Segment segmentSent)
         {
             ArgumentNullException.ThrowIfNull(segmentSent);
-            State = ConnectionState.InitConnection;
+            CurrentState = State.SynSent;
             LastSegmentSent = segmentSent;
             LastSentTimes = DateTime.UtcNow.Ticks;
         }
-        public void UpdateConnectionInfo(ConnectionState newState, Segment? lastSegmentReceived, Segment? lastSegmentSent)
+        public void UpdateConnectionInfo(State newState, Segment? lastSegmentReceived, Segment? lastSegmentSent)
         {
             if(lastSegmentReceived == null && lastSegmentSent == null)
                 throw new ArgumentException("At least one of lastSegmentReceived or lastSegmentSent must be non-null.");
             
             LastSegmentReceived = lastSegmentReceived;
             LastSegmentSent = lastSegmentSent;
-            State = newState;
+            CurrentState = newState;
             LastSentTimes = DateTime.UtcNow.Ticks;
         }
+        /*
         public void ResetConnection(Segment segmentSent)
         {
             ArgumentNullException.ThrowIfNull(segmentSent);
 
-            State = ConnectionState.ResetConnection;
+            CurrentState = State.ResetConnection;
             LastSegmentSent = segmentSent;
             LastSentTimes = DateTime.UtcNow.Ticks;
         }
@@ -64,10 +68,10 @@ namespace Shared.Models
         {
             ArgumentNullException.ThrowIfNull(segmentSent);
 
-            State = ConnectionState.ClosingConnection;
+            CurrentState = State.ClosingConnection;
             LastSegmentSent = segmentSent;
             LastSentTimes = DateTime.UtcNow.Ticks;
-        }
+        } */
         public void IncrementRetransmissionCount()
         {
             RetransmissionCount++;

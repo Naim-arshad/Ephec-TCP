@@ -26,7 +26,7 @@ namespace Shared.Models.Tests
             Assert.Null(connectionInfo.LastSegmentSent);
             Assert.Equal(0, connectionInfo.LastSentTimes);
             Assert.Equal(0, connectionInfo.RetransmissionCount);
-            Assert.Equal(ConnectionInfo.ConnectionState.Disconnected, connectionInfo.State);
+            Assert.Equal(ConnectionInfo.State.Closed, connectionInfo.CurrentState);
         }
 
         [Fact]
@@ -47,7 +47,7 @@ namespace Shared.Models.Tests
 
             connectionInfo.BeginConnection(segment);
 
-            Assert.Equal(ConnectionInfo.ConnectionState.InitiatedConnection, connectionInfo.State);
+            Assert.Equal(ConnectionInfo.State.SynSent, connectionInfo.CurrentState);
             Assert.Equal(segment, connectionInfo.LastSegmentSent);
             Assert.NotEqual(0, connectionInfo.LastSentTimes);
         }
@@ -87,9 +87,9 @@ namespace Shared.Models.Tests
             var receivedSegment = new Segment(1, new SegmentFlags(SegmentFlags.FlagOptions.Ack), Array.Empty<byte>());
             var sentSegment = new Segment(2, new SegmentFlags(SegmentFlags.FlagOptions.Syn), Array.Empty<byte>());
 
-            connectionInfo.UpdateConnectionInfo(ConnectionInfo.ConnectionState.Connected, receivedSegment, null);
+            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, receivedSegment, null);
 
-            Assert.Equal(ConnectionInfo.ConnectionState.Connected, connectionInfo.State);
+            Assert.Equal(ConnectionInfo.State.Established, connectionInfo.CurrentState);
             Assert.Equal(receivedSegment, connectionInfo.LastSegmentReceived);
             Assert.Null(connectionInfo.LastSegmentSent);
         }
@@ -100,9 +100,9 @@ namespace Shared.Models.Tests
             var connectionInfo = new ConnectionInfo(_testEndpoint);
             var sentSegment = new Segment(1, new SegmentFlags(SegmentFlags.FlagOptions.Syn), Array.Empty<byte>());
 
-            connectionInfo.UpdateConnectionInfo(ConnectionInfo.ConnectionState.Connected, null, sentSegment);
+            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, sentSegment);
 
-            Assert.Equal(ConnectionInfo.ConnectionState.Connected, connectionInfo.State);
+            Assert.Equal(ConnectionInfo.State.Established, connectionInfo.CurrentState);
             Assert.Null(connectionInfo.LastSegmentReceived);
             Assert.Equal(sentSegment, connectionInfo.LastSegmentSent);
         }
@@ -114,7 +114,7 @@ namespace Shared.Models.Tests
             var receivedSegment = new Segment(1, new SegmentFlags(SegmentFlags.FlagOptions.Ack), Array.Empty<byte>());
             var sentSegment = new Segment(2, new SegmentFlags(SegmentFlags.FlagOptions.Syn), Array.Empty<byte>());
 
-            connectionInfo.UpdateConnectionInfo(ConnectionInfo.ConnectionState.Connected, receivedSegment, sentSegment);
+            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, receivedSegment, sentSegment);
 
             Assert.Equal(receivedSegment, connectionInfo.LastSegmentReceived);
             Assert.Equal(sentSegment, connectionInfo.LastSegmentSent);
@@ -126,7 +126,7 @@ namespace Shared.Models.Tests
             var connectionInfo = new ConnectionInfo(_testEndpoint);
 
             var exception = Assert.Throws<ArgumentException>(() =>
-                connectionInfo.UpdateConnectionInfo(ConnectionInfo.ConnectionState.Connected, null, null));
+                connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, null));
 
             Assert.Contains("At least one of", exception.Message);
         }
@@ -139,7 +139,7 @@ namespace Shared.Models.Tests
             long beforeTime = connectionInfo.LastSentTimes;
 
             System.Threading.Thread.Sleep(10);
-            connectionInfo.UpdateConnectionInfo(ConnectionInfo.ConnectionState.Connected, segment, null);
+            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, segment, null);
 
             Assert.True(connectionInfo.LastSentTimes > beforeTime);
         }
@@ -151,16 +151,16 @@ namespace Shared.Models.Tests
             var segment = new Segment(1, new SegmentFlags(SegmentFlags.FlagOptions.Ack), Array.Empty<byte>());
             var states = new[]
             {
-                ConnectionInfo.ConnectionState.Connected,
-                ConnectionInfo.ConnectionState.ClosingConnection,
-                ConnectionInfo.ConnectionState.FailedConnection,
-                ConnectionInfo.ConnectionState.ResetConnection
+                ConnectionInfo.State.Established,
+                ConnectionInfo.State.ClosingConnection,
+                ConnectionInfo.State.FailedConnection,
+                ConnectionInfo.State.ResetConnection
             };
 
             foreach (var state in states)
             {
                 connectionInfo.UpdateConnectionInfo(state, segment, null);
-                Assert.Equal(state, connectionInfo.State);
+                Assert.Equal(state, connectionInfo.CurrentState);
             }
         }
 
@@ -176,7 +176,7 @@ namespace Shared.Models.Tests
 
             connectionInfo.ResetConnection(segment);
 
-            Assert.Equal(ConnectionInfo.ConnectionState.ResetConnection, connectionInfo.State);
+            Assert.Equal(ConnectionInfo.State.ResetConnection, connectionInfo.CurrentState);
             Assert.Equal(segment, connectionInfo.LastSegmentSent);
             Assert.NotEqual(0, connectionInfo.LastSentTimes);
         }
@@ -214,7 +214,7 @@ namespace Shared.Models.Tests
 
             connectionInfo.CloseConnection(segment);
 
-            Assert.Equal(ConnectionInfo.ConnectionState.ClosingConnection, connectionInfo.State);
+            Assert.Equal(ConnectionInfo.State.ClosingConnection, connectionInfo.CurrentState);
             Assert.Equal(segment, connectionInfo.LastSegmentSent);
             Assert.NotEqual(0, connectionInfo.LastSentTimes);
         }
@@ -306,17 +306,17 @@ namespace Shared.Models.Tests
 
             // Start connection
             connectionInfo.BeginConnection(synSegment);
-            Assert.Equal(ConnectionInfo.ConnectionState.InitiatedConnection, connectionInfo.State);
+            Assert.Equal(ConnectionInfo.State.SynSent, connectionInfo.CurrentState);
 
             // Establish connection
-            connectionInfo.UpdateConnectionInfo(ConnectionInfo.ConnectionState.Connected, synAckSegment, null);
-            Assert.Equal(ConnectionInfo.ConnectionState.Connected, connectionInfo.State);
+            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, synAckSegment, null);
+            Assert.Equal(ConnectionInfo.State.Established, connectionInfo.CurrentState);
             Assert.Equal(synAckSegment, connectionInfo.LastSegmentReceived);
 
             // Close connection
             var finSegment = new Segment(4, new SegmentFlags(SegmentFlags.FlagOptions.Fin), Array.Empty<byte>());
             connectionInfo.CloseConnection(finSegment);
-            Assert.Equal(ConnectionInfo.ConnectionState.ClosingConnection, connectionInfo.State);
+            Assert.Equal(ConnectionInfo.State.ClosingConnection, connectionInfo.CurrentState);
         }
 
         [Fact]
@@ -327,20 +327,20 @@ namespace Shared.Models.Tests
 
             var validTransitions = new[]
             {
-                ConnectionInfo.ConnectionState.Disconnected,
-                ConnectionInfo.ConnectionState.InitiatedConnection,
-                ConnectionInfo.ConnectionState.Connected,
-                ConnectionInfo.ConnectionState.ClosingConnection,
-                ConnectionInfo.ConnectionState.Disconnected
+                ConnectionInfo.State.Closed,
+                ConnectionInfo.State.SynSent,
+                ConnectionInfo.State.Established,
+                ConnectionInfo.State.ClosingConnection,
+                ConnectionInfo.State.Closed
             };
 
             foreach (var state in validTransitions)
             {
-                if (state == ConnectionInfo.ConnectionState.Disconnected)
+                if (state == ConnectionInfo.State.Closed)
                 {
                     connectionInfo = new ConnectionInfo(_testEndpoint);
                 }
-                else if (state == ConnectionInfo.ConnectionState.InitiatedConnection)
+                else if (state == ConnectionInfo.State.SynSent)
                 {
                     connectionInfo.BeginConnection(segment);
                 }
@@ -349,7 +349,7 @@ namespace Shared.Models.Tests
                     connectionInfo.UpdateConnectionInfo(state, segment, null);
                 }
 
-                Assert.Equal(state, connectionInfo.State);
+                Assert.Equal(state, connectionInfo.CurrentState);
             }
         }
 
@@ -368,8 +368,8 @@ namespace Shared.Models.Tests
             connectionInfo1.BeginConnection(segment1);
             connectionInfo2.BeginConnection(segment2);
 
-            Assert.Equal(ConnectionInfo.ConnectionState.InitiatedConnection, connectionInfo1.State);
-            Assert.Equal(ConnectionInfo.ConnectionState.InitiatedConnection, connectionInfo2.State);
+            Assert.Equal(ConnectionInfo.State.SynSent, connectionInfo1.CurrentState);
+            Assert.Equal(ConnectionInfo.State.SynSent, connectionInfo2.CurrentState);
             Assert.Equal(segment1, connectionInfo1.LastSegmentSent);
             Assert.Equal(segment2, connectionInfo2.LastSegmentSent);
         }

@@ -1,5 +1,5 @@
 ﻿using Shared.Models;
-using Shared.Protocol;
+using Shared.Protocol.TCP;
 using System.Net;
 using System.Net.Sockets;
 
@@ -20,7 +20,7 @@ namespace Receiver
             Console.ReadLine();
             await receiver.DisposeAsync();
             */
-            TcpOverlayTransport tcpOverlayTransport = new TcpOverlayTransport(11000);
+            TcpConnection tcpOverlayTransport = new TcpConnection(11000);
 
             Console.ReadLine();
             Console.WriteLine("En cours d'écoute...");

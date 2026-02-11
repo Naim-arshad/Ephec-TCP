@@ -3,13 +3,14 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 
-namespace Shared.Protocol
+namespace Shared.Protocol.TCP
 {
-    public class TcpOverlayTransport
+    public class TcpConnection
     {
         private readonly Dictionary<string, ConnectionInfo> _mapConnection;
         private readonly UdpTransport _udpTransport;
-        public TcpOverlayTransport(int port)
+
+        public TcpConnection(int port)
         {
             _mapConnection = new Dictionary<string, ConnectionInfo>();
             _udpTransport = new UdpTransport(port);
@@ -49,18 +50,18 @@ namespace Shared.Protocol
 
             if (_mapConnection.ContainsKey(ip.ToString()))
             {
-                Console.WriteLine("SYN reçu (existing ip)");
+                Console.WriteLine("SYN reçu (existing connection)");
                 connectionInfo = _mapConnection[ip.ToString()];
             } else
             {
-                Console.WriteLine("SYN reçu (new ip)");
+                Console.WriteLine("SYN reçu (new connection)");
                 connectionInfo = new(ip);
                 _mapConnection.Add(ip.ToString(), connectionInfo);
             }
 
             Segment segmentToSend;
 
-            if (connectionInfo.State == ConnectionInfo.ConnectionState.Disconnected)
+            if (connectionInfo.CurrentState == ConnectionInfo.State.Closed)
             {
                 segmentToSend = new(
                     sequence: RandomSequenceNumber(segmentReceived.SequenceNumber),
@@ -69,11 +70,12 @@ namespace Shared.Protocol
                 );
 
                 _mapConnection[ip.ToString()].UpdateConnectionInfo(
-                    ConnectionInfo.ConnectionState.InitConnection,
+                    ConnectionInfo.State.SynReceived,
                     segmentReceived,
                     segmentToSend);
             } else
             {
+                //TODO peut etre extraire ce code et en faire une fonction pour éviter la duplication de code reponse ACK
                 Console.WriteLine("Connexion déjà existante et active, envoie d'un ACK avec la sequence du dernier paquet recu");
 
                 segmentToSend = new(
@@ -83,7 +85,7 @@ namespace Shared.Protocol
                 );
 
                 _mapConnection[ip.ToString()].UpdateConnectionInfo(
-                _mapConnection[ip.ToString()].State,
+                _mapConnection[ip.ToString()].CurrentState,
                 segmentReceived,
                 segmentToSend);
             }

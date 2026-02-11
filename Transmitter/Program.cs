@@ -1,5 +1,5 @@
 ﻿using Shared.Models;
-using Shared.Protocol;
+using Shared.Protocol.TCP;
 using System.Net;
 using System.Net.Sockets;
 using static System.Net.Mime.MediaTypeNames;
@@ -12,7 +12,7 @@ namespace Transmitter
         {
             
 
-            TcpOverlayTransport tcpOverlayTransport = new TcpOverlayTransport(12000);
+            TcpConnection tcpOverlayTransport = new TcpConnection(12000);
 
             string? key = "";
             while (key != "q")
