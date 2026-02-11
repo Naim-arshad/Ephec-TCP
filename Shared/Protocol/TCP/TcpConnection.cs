@@ -47,7 +47,7 @@ namespace Shared.Protocol.TCP
         public async Task SendSyn(IPEndPoint ip)
         {
             //TODO: implémenter sendSyn (ci-dessous est un code basique pour tester)
-            Segment packet = new(0xAAAA, new SegmentFlags(SegmentFlags.FlagOptions.Syn), new byte[0x02]);
+            Segment packet = new(RandomSequenceNumber(0), new SegmentFlags(SegmentFlags.FlagOptions.Syn), new byte[0x02]);
             byte[] PacketBinary = packet.Serialize();
 
             _ = _udpTransport.SendSegmentAsync(
@@ -60,7 +60,7 @@ namespace Shared.Protocol.TCP
         {
             Random rand = new();
             ushort number = (ushort)rand.Next(0, ushort.MaxValue);
-            if (number == excludeNumber && (number + 2) <= ushort.MaxValue)
+            if (number != excludeNumber && (number + 2) <= ushort.MaxValue)
                 number += 2;
             else
                 number = 0;
