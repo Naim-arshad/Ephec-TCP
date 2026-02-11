@@ -8,6 +8,19 @@ namespace Shared.Protocol.TCP
 {
     public class TcpFlagHandler
     {
+        /// <summary>
+        /// Handles an incoming SYN segment for a TCP-like connection, updating the connection state and preparing an
+        /// appropriate response segment.
+        /// </summary>
+        /// <remarks>If the connection is new, the method initializes connection information and responds
+        /// with a SYN-ACK segment. For existing connections, it responds with an ACK segment. The connection state and
+        /// segment history are updated accordingly.</remarks>
+        /// <param name="segmentReceived">The received SYN segment to process. Must not be null.</param>
+        /// <param name="ip">The remote endpoint associated with the incoming segment. Used to identify or create the connection.</param>
+        /// <param name="mapConnection">A dictionary mapping remote endpoint identifiers to their corresponding connection information. The method
+        /// updates this map as needed.</param>
+        /// <returns>A byte array representing the serialized response segment to be sent back to the remote endpoint. The
+        /// segment will contain SYN-ACK or ACK flags depending on the connection state.</returns>
         public static byte[] HandleSYN(Segment segmentReceived, IPEndPoint ip, Dictionary<string, ConnectionInfo> mapConnection)
         {
 
