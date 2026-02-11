@@ -24,14 +24,13 @@ namespace Shared.Protocol.TCP
         {
             Console.Write($"{ip.ToString()}: ");
             Segment segment = Segment.Deserialize(PacketBinary);
+            byte[] byteToSend;
 
             switch (segment.Flags.Value)
             {
                 case (byte)SegmentFlags.FlagOptions.Syn:
-                    _ = _udpTransport.SendSegmentAsync(
-                            TcpFlagHandler.HandleSYN(segment, ip, _mapConnection), 
-                            ip
-                        ); 
+                    byteToSend = TcpFlagHandler.HandleSYN(segment, ip, _mapConnection).Serialize();
+                    _ = _udpTransport.SendSegmentAsync(byteToSend, ip); 
                     break;
                 case ((byte)SegmentFlags.FlagOptions.Syn | (byte)SegmentFlags.FlagOptions.Ack):
                     Console.WriteLine("TODO: Gérer le SYN-ACK");

@@ -21,58 +21,61 @@ namespace Shared.Protocol.TCP
         /// updates this map as needed.</param>
         /// <returns>A byte array representing the serialized response segment to be sent back to the remote endpoint. The
         /// segment will contain SYN-ACK or ACK flags depending on the connection state.</returns>
-        public static byte[] HandleSYN(Segment segmentReceived, IPEndPoint ip, Dictionary<string, ConnectionInfo> mapConnection)
+        public static Segment HandleSYN(Segment segmentReceived, IPEndPoint ip, Dictionary<string, ConnectionInfo> mapConnection)
         {
+            object _sync = new();
 
-            ConnectionInfo connectionInfo;
-
-            Console.WriteLine($"Packet reçu {segmentReceived}");
-
-            if (mapConnection.ContainsKey(ip.ToString()))
+            lock (_sync)
             {
-                Console.WriteLine("SYN reçu (existing connection)");
-                connectionInfo = mapConnection[ip.ToString()];
-            }
-            else
-            {
-                Console.WriteLine("SYN reçu (new connection)");
-                connectionInfo = new(ip);
-                mapConnection.Add(ip.ToString(), connectionInfo);
-            }
+                ConnectionInfo connectionInfo;
 
-            Segment segmentToSend;
+                Console.WriteLine($"Packet reçu {segmentReceived}");
 
-            if (connectionInfo.CurrentState == ConnectionInfo.State.Closed)
-            {
-                segmentToSend = new(
-                    sequence: TcpConnection.RandomSequenceNumber(segmentReceived.SequenceNumber),
-                    flags: new SegmentFlags((byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack)),
-                    data: segmentReceived.GetSequenceToBytes()
-                );
+                if (mapConnection.ContainsKey(ip.ToString()))
+                {
+                    Console.WriteLine("SYN reçu (existing connection)");
+                    connectionInfo = mapConnection[ip.ToString()];
+                }
+                else
+                {
+                    Console.WriteLine("SYN reçu (new connection)");
+                    connectionInfo = new(ip);
+                    mapConnection.Add(ip.ToString(), connectionInfo);
+                }
 
-                mapConnection[ip.ToString()].UpdateConnectionInfo(
-                    ConnectionInfo.State.SynReceived,
+                Segment segmentToSend;
+
+                if (connectionInfo.CurrentState == ConnectionInfo.State.Closed)
+                {
+                    segmentToSend = new(
+                        sequence: TcpConnection.RandomSequenceNumber(segmentReceived.SequenceNumber),
+                        flags: new SegmentFlags((byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack)),
+                        data: segmentReceived.GetSequenceToBytes()
+                    );
+
+                    mapConnection[ip.ToString()].UpdateConnectionInfo(
+                        ConnectionInfo.State.SynReceived,
+                        segmentReceived,
+                        segmentToSend);
+                }
+                else
+                {
+                    //TODO peut etre extraire ce code et en faire une fonction pour éviter la duplication de code reponse ACK
+                    Console.WriteLine("Connexion déjà existante et active, envoie d'un ACK avec la sequence du dernier paquet recu");
+
+                    segmentToSend = new(
+                        sequence: TcpConnection.RandomSequenceNumber(segmentReceived.SequenceNumber),
+                        flags: new SegmentFlags((byte)(SegmentFlags.FlagOptions.Ack)),
+                        data: segmentReceived.GetSequenceToBytes()
+                    );
+
+                    mapConnection[ip.ToString()].UpdateConnectionInfo(
+                    mapConnection[ip.ToString()].CurrentState,
                     segmentReceived,
                     segmentToSend);
+                }
+                return segmentToSend;
             }
-            else
-            {
-                //TODO peut etre extraire ce code et en faire une fonction pour éviter la duplication de code reponse ACK
-                Console.WriteLine("Connexion déjà existante et active, envoie d'un ACK avec la sequence du dernier paquet recu");
-
-                segmentToSend = new(
-                    sequence: TcpConnection.RandomSequenceNumber(segmentReceived.SequenceNumber),
-                    flags: new SegmentFlags((byte)(SegmentFlags.FlagOptions.Ack)),
-                    data: segmentReceived.GetSequenceToBytes()
-                );
-
-                mapConnection[ip.ToString()].UpdateConnectionInfo(
-                mapConnection[ip.ToString()].CurrentState,
-                segmentReceived,
-                segmentToSend);
-            }
-
-            return segmentToSend.Serialize();
         }
 
     }
