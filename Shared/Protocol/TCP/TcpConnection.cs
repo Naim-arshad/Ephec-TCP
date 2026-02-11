@@ -5,6 +5,7 @@ using System.Net;
 
 namespace Shared.Protocol.TCP
 {
+
     public class TcpConnection
     {
         private readonly Dictionary<string, ConnectionInfo> _mapConnection;
@@ -27,7 +28,10 @@ namespace Shared.Protocol.TCP
             switch (segment.Flags.Value)
             {
                 case (byte)SegmentFlags.FlagOptions.Syn:
-                    HandleSYN(segment, ip);
+                    _ = _udpTransport.SendSegmentAsync(
+                            TcpFlagHandler.HandleSYN(segment, ip, _mapConnection), 
+                            ip
+                        ); 
                     break;
                 case ((byte)SegmentFlags.FlagOptions.Syn | (byte)SegmentFlags.FlagOptions.Ack):
                     Console.WriteLine("TODO: Gérer le SYN-ACK");
@@ -39,57 +43,6 @@ namespace Shared.Protocol.TCP
                 default:
                     throw new Exception("Type de segment non géré");
             }
-        }
-
-        private void HandleSYN(Segment segmentReceived, IPEndPoint ip)
-        {
-
-            ConnectionInfo connectionInfo;
-
-            Console.WriteLine($"Packet reçu {segmentReceived}");
-
-            if (_mapConnection.ContainsKey(ip.ToString()))
-            {
-                Console.WriteLine("SYN reçu (existing connection)");
-                connectionInfo = _mapConnection[ip.ToString()];
-            } else
-            {
-                Console.WriteLine("SYN reçu (new connection)");
-                connectionInfo = new(ip);
-                _mapConnection.Add(ip.ToString(), connectionInfo);
-            }
-
-            Segment segmentToSend;
-
-            if (connectionInfo.CurrentState == ConnectionInfo.State.Closed)
-            {
-                segmentToSend = new(
-                    sequence: RandomSequenceNumber(segmentReceived.SequenceNumber),
-                    flags: new SegmentFlags((byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack)),
-                    data: segmentReceived.GetSequenceToBytes()
-                );
-
-                _mapConnection[ip.ToString()].UpdateConnectionInfo(
-                    ConnectionInfo.State.SynReceived,
-                    segmentReceived,
-                    segmentToSend);
-            } else
-            {
-                //TODO peut etre extraire ce code et en faire une fonction pour éviter la duplication de code reponse ACK
-                Console.WriteLine("Connexion déjà existante et active, envoie d'un ACK avec la sequence du dernier paquet recu");
-
-                segmentToSend = new(
-                    sequence: RandomSequenceNumber(segmentReceived.SequenceNumber),
-                    flags: new SegmentFlags((byte)(SegmentFlags.FlagOptions.Ack)),
-                    data: segmentReceived.GetSequenceToBytes()
-                );
-
-                _mapConnection[ip.ToString()].UpdateConnectionInfo(
-                _mapConnection[ip.ToString()].CurrentState,
-                segmentReceived,
-                segmentToSend);
-            }
-            _ = _udpTransport.SendSegmentAsync(segmentToSend.Serialize(), ip);
         }
 
         public async Task SendSyn(IPEndPoint ip)
@@ -104,7 +57,7 @@ namespace Shared.Protocol.TCP
             );
         }
 
-        private static ushort RandomSequenceNumber(ushort excludeNumber)
+        public static ushort RandomSequenceNumber(ushort excludeNumber)
         {
             Random rand = new();
             ushort number = (ushort)rand.Next(0, ushort.MaxValue);
