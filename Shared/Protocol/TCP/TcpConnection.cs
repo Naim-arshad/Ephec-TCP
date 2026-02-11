@@ -1,6 +1,6 @@
 ﻿using Shared.Models;
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Net;
 
 namespace Shared.Protocol.TCP
@@ -8,12 +8,12 @@ namespace Shared.Protocol.TCP
 
     public class TcpConnection
     {
-        private readonly Dictionary<string, ConnectionInfo> _mapConnection;
+        private readonly ConcurrentDictionary<string, ConnectionInfo> _mapConnection;
         private readonly UdpTransport _udpTransport;
 
         public TcpConnection(int port)
         {
-            _mapConnection = new Dictionary<string, ConnectionInfo>();
+            _mapConnection = new ConcurrentDictionary<string, ConnectionInfo>();
             _udpTransport = new UdpTransport(port);
             
             _udpTransport.OnSegmentReceived += OnSegmentReceived;

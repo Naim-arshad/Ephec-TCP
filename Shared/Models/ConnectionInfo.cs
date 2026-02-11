@@ -11,6 +11,8 @@ namespace Shared.Models
         public readonly IPEndPoint Endpoint;
         public const int MaxRetransmissions = 5;
 
+        private readonly object _sync = new();
+
         public Segment? LastSegmentReceived { get; private set; }
         public Segment? LastSegmentSent { get; private set; }
         public long LastSentTimes { get; private set; }
@@ -41,19 +43,26 @@ namespace Shared.Models
         public void BeginConnection(Segment segmentSent)
         {
             ArgumentNullException.ThrowIfNull(segmentSent);
-            CurrentState = State.SynSent;
-            LastSegmentSent = segmentSent;
-            LastSentTimes = DateTime.UtcNow.Ticks;
+
+            lock (_sync)
+            {
+                CurrentState = State.SynSent;
+                LastSegmentSent = segmentSent;
+                LastSentTimes = DateTime.UtcNow.Ticks;
+            }
         }
         public void UpdateConnectionInfo(State newState, Segment? lastSegmentReceived, Segment? lastSegmentSent)
         {
-            if(lastSegmentReceived == null && lastSegmentSent == null)
+            if (lastSegmentReceived == null && lastSegmentSent == null)
                 throw new ArgumentException("At least one of lastSegmentReceived or lastSegmentSent must be non-null.");
-            
-            LastSegmentReceived = lastSegmentReceived;
-            LastSegmentSent = lastSegmentSent;
-            CurrentState = newState;
-            LastSentTimes = DateTime.UtcNow.Ticks;
+
+            lock (_sync)
+            {
+                LastSegmentReceived = lastSegmentReceived;
+                LastSegmentSent = lastSegmentSent;
+                CurrentState = newState;
+                LastSentTimes = DateTime.UtcNow.Ticks;
+            }
         }
         /*
         public void ResetConnection(Segment segmentSent)
@@ -74,8 +83,11 @@ namespace Shared.Models
         } */
         public void IncrementRetransmissionCount()
         {
-            RetransmissionCount++;
-            LastSentTimes = DateTime.UtcNow.Ticks;
+            lock (_sync)
+            {
+                RetransmissionCount++;
+                LastSentTimes = DateTime.UtcNow.Ticks;
+            }
         }
     }
 }
