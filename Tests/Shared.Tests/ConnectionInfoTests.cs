@@ -4,7 +4,7 @@ using System.Reflection;
 using System.Buffers.Binary;
 using System.Net;
 using Xunit;
-using Shared.Models;
+using Shared.Models.Segment;
 
 namespace Shared.Models.Tests
 {

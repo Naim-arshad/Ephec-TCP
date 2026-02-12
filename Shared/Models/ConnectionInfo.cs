@@ -9,14 +9,14 @@ namespace Shared.Models
     public class ConnectionInfo
     {
         public readonly IPEndPoint Endpoint;
-        public const int MaxRetransmissions = 5;
 
-        private readonly object _sync = new();
+        private readonly Lock _sync = new();
 
         public Segment? LastSegmentReceived { get; private set; }
         public Segment? LastSegmentSent { get; private set; }
         public long LastSentTimes { get; private set; }
-        public int RetransmissionCount { get; private set; }
+
+        private readonly Dictionary<ushort, Segment> _mapSegmentToRetransmit;
 
         public State CurrentState { get; private set; }
         public enum State
@@ -38,7 +38,7 @@ namespace Shared.Models
 
             Endpoint = endpoint;
             CurrentState = State.Closed;
-            RetransmissionCount = 0;
+            _mapSegmentToRetransmit = [];
         }
         public void BeginConnection(Segment segmentSent)
         {
@@ -62,31 +62,31 @@ namespace Shared.Models
                 LastSegmentSent = lastSegmentSent;
                 CurrentState = newState;
                 LastSentTimes = DateTime.UtcNow.Ticks;
+
+                if(lastSegmentSent != null)
+                {
+                    Console.WriteLine($"Adding segment with sequence number {lastSegmentSent.SequenceNumber} to retransmission map.");
+                    _mapSegmentToRetransmit.Add(lastSegmentSent.SequenceNumber, lastSegmentSent);
+                }
+                    
             }
         }
-        /*
-        public void ResetConnection(Segment segmentSent)
-        {
-            ArgumentNullException.ThrowIfNull(segmentSent);
-
-            CurrentState = State.ResetConnection;
-            LastSegmentSent = segmentSent;
-            LastSentTimes = DateTime.UtcNow.Ticks;
-        }
-        public void CloseConnection(Segment segmentSent)
-        {
-            ArgumentNullException.ThrowIfNull(segmentSent);
-
-            CurrentState = State.ClosingConnection;
-            LastSegmentSent = segmentSent;
-            LastSentTimes = DateTime.UtcNow.Ticks;
-        } */
-        public void IncrementRetransmissionCount()
+        public void MarkSegmentAsAcknowledged(ushort sequenceNumber)
         {
             lock (_sync)
             {
-                RetransmissionCount++;
-                LastSentTimes = DateTime.UtcNow.Ticks;
+                if (_mapSegmentToRetransmit.TryGetValue(sequenceNumber, out var segment))
+                {
+                    segment.AckReceived = true;
+                    _mapSegmentToRetransmit.Remove(sequenceNumber);
+                }
+            }
+        }
+        public IEnumerable<Segment> GetSegmentsToRetransmit()
+        {
+            lock (_sync)
+            {
+                return [.. _mapSegmentToRetransmit.Values];
             }
         }
     }

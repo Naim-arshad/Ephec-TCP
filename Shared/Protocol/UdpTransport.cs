@@ -26,7 +26,7 @@ namespace Shared.Protocol
                 //Pour ignorer le packet caché de windows ICMP si le port n'est pas ouvert
                 _udpClient.Client.IOControl(
                     (IOControlCode)SIO_UDP_CONNRESET, 
-                    new byte[] { 0 }, 
+                    [0], 
                     null); 
             } catch
             {

@@ -3,7 +3,7 @@ using System.Linq;
 using System.Reflection;
 using System.Buffers.Binary;
 using Xunit;
-using Shared.Models;
+using Shared.Models.Segment;
 
 namespace Shared.Models.Tests
 {

@@ -10,6 +10,9 @@ namespace Shared.Protocol.TCP
     {
         private readonly ConcurrentDictionary<string, ConnectionInfo> _mapConnection;
         private readonly UdpTransport _udpTransport;
+        private readonly static Random rand = new();
+        private readonly TcpRetransmissionHandler _retransmissionHandler;
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
 
         public TcpConnection(int port)
         {
@@ -18,11 +21,14 @@ namespace Shared.Protocol.TCP
             
             _udpTransport.OnSegmentReceived += OnSegmentReceived;
             _udpTransport.StartServer();
+
+            _retransmissionHandler = new TcpRetransmissionHandler(_udpTransport);
+            _ = _retransmissionHandler.LoopRetransmissions(_mapConnection, _cancellationTokenSource.Token);
         }
 
         public void OnSegmentReceived(byte[] PacketBinary, IPEndPoint ip)
         {
-            Console.Write($"{ip.ToString()}: ");
+            Console.Write($"{ip}: ");
             Segment segment = Segment.Deserialize(PacketBinary);
             byte[] byteToSend;
 
@@ -58,7 +64,6 @@ namespace Shared.Protocol.TCP
 
         public static ushort RandomSequenceNumber(ushort excludeNumber)
         {
-            Random rand = new();
             ushort number = (ushort)rand.Next(0, ushort.MaxValue);
             if (number != excludeNumber && (number + 2) <= ushort.MaxValue)
                 number += 2;
