@@ -1,17 +1,33 @@
 ﻿using Shared.Models;
+using Shared.Protocol.TCP;
+using System.Net;
+using System.Net.Sockets;
 
 namespace Receiver
 {
     internal class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
-            Packet packet = new Packet(0xAAAA, Packet.PacketFlags.FIN, new byte[0x02]);
-            byte[] PacketBinary = packet.Serialize();
-            Console.WriteLine(Packet.BytesToHexString(PacketBinary));
-            Packet deserializedPacket = Packet.Deserialize(PacketBinary);
-            Console.WriteLine(Packet.BytesToHexString(deserializedPacket.Serialize()));
+            /*
+            UdpTransport receiver = new UdpTransport(11000);
+            receiver.StartServer();
+            
+            receiver.OnSegmentReceived += test;
 
+            Console.ReadLine();
+            Console.WriteLine("En cours d'écoute...");
+            Console.ReadLine();
+            await receiver.DisposeAsync();
+            */
+            TcpConnection tcpOverlayTransport = new TcpConnection(11000);
+
+            
+
+            Console.ReadLine();
+            Console.WriteLine("En cours d'écoute...");
+            Console.ReadLine();
+            Console.WriteLine("Fermeture...");
         }
     }
 }
