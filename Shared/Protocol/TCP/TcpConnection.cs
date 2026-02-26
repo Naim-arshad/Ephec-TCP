@@ -49,7 +49,7 @@ namespace Shared.Protocol.TCP
                     throw new Exception("Type de segment non géré");
             }
         }
-
+        
         public async Task SendSyn(IPEndPoint ip)
         {
             //TODO: implémenter sendSyn (ci-dessous est un code basique pour tester)

@@ -1,16 +1,12 @@
 ﻿using Shared.Models;
-using System;
-using System.Collections;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Shared.Protocol.TCP
 {
     public class TcpRetransmissionHandler(UdpTransport udpTransport)
     {
         private readonly UdpTransport _udpTransport = udpTransport;
-
+        private readonly SemaphoreSlim _semaphore = new(5);
         private const int RetransmissionTimeout = 1000; // in milliseconds
         private const int MaxRetransmissions = 5;
 
@@ -34,12 +30,15 @@ namespace Shared.Protocol.TCP
                     {
                         foreach (var segment in connection.Value.GetSegmentsToRetransmit())
                         {
+                            
+
                             if (segment.RetransmissionCount < MaxRetransmissions)
                             {
                                 _ = Task.Run(async () =>
                                 {
                                     try
                                     {
+                                        await _semaphore.WaitAsync(cancellationToken);
                                         await _udpTransport.SendSegmentAsync(segment.Serialize(), connection.Value.Endpoint);
                                         segment.IncrementRetransmissionCount();
                                     }
@@ -49,6 +48,10 @@ namespace Shared.Protocol.TCP
                                         Console.WriteLine($"Error retransmitting segment with sequence number " +
                                             $"{segment.SequenceNumber} to {connection.Value.Endpoint}: {ex.Message}");
                                     }
+                                    finally
+                                    {
+                                        _semaphore.Release();
+                                    }
                                 });
                             }
                             else
@@ -57,6 +60,7 @@ namespace Shared.Protocol.TCP
                                 Console.WriteLine($"Max retransmissions reached for segment with sequence number " +
                                     $"{segment.SequenceNumber} to {connection.Value.Endpoint}. Closing connection.");
                                 mapConnection.TryRemove(connection.Key, out _);
+                                break; // Exit the loop for this connection since it's being removed.
                             }
                         }
                     }

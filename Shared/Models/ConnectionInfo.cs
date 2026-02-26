@@ -30,6 +30,7 @@ namespace Shared.Models
             CloseWait,
             Closing,
             TimeWait,
+            TimeOut
         }
 
         public ConnectionInfo(IPEndPoint endpoint)
