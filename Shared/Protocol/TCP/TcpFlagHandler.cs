@@ -1,8 +1,7 @@
 ﻿using Shared.Models;
-using System;
 using System.Collections.Concurrent;
 using System.Net;
-using System.Text;
+using Shared.Logging;
 
 namespace Shared.Protocol.TCP
 {
@@ -25,18 +24,18 @@ namespace Shared.Protocol.TCP
         {
             string endpointKey = ip.ToString();
 
-            Console.WriteLine($"Packet reçu {segmentReceived}");
+            Logger.Debug($"Packet reçu {segmentReceived}");
 
             bool isExistingConnection = mapConnection.TryGetValue(endpointKey, out ConnectionInfo? existingConnectionInfo);
             ConnectionInfo connectionInfo = existingConnectionInfo ?? mapConnection.GetOrAdd(endpointKey, _ =>
             {
-                Console.WriteLine("SYN reçu (new connection)");
+                Logger.Debug("SYN reçu (new connection)");
                 return new ConnectionInfo(ip);
             });
 
             if (isExistingConnection)
             {
-                Console.WriteLine("SYN reçu (existing connection)");
+                Logger.Debug("SYN reçu (existing connection)");
             }
 
             Segment segmentToSend;
@@ -57,7 +56,7 @@ namespace Shared.Protocol.TCP
             else
             {
                 //TODO peut etre extraire ce code et en faire une fonction pour éviter la duplication de code reponse ACK
-                Console.WriteLine("Connexion déjà existante et active, envoie d'un ACK avec la sequence du dernier paquet recu");
+                Logger.Debug("Connexion déjà existante et active, envoie d'un ACK avec la sequence du dernier paquet recu");
 
                 segmentToSend = new(
                     sequence: TcpConnection.RandomSequenceNumber(segmentReceived.SequenceNumber),
@@ -73,7 +72,5 @@ namespace Shared.Protocol.TCP
 
             return segmentToSend;
         }
-
-
     }
 }

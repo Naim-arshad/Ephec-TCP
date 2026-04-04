@@ -15,16 +15,18 @@ namespace Shared.Logging
             Critical
         }
 
-        public void Log(LogLevel level, string message)
+        public static void Log(LogLevel level, string message)
         {
             string timestamp = DateTime.UtcNow.ToString("o");
             Console.WriteLine($"[{timestamp}] [{level}] {message}");
         }
 
-        public void Debug(string message) => Log(LogLevel.Debug, message);
-        public void Info(string message) => Log(LogLevel.Info, message);
-        public void Warning(string message) => Log(LogLevel.Warning, message);
-        public void Error(string message) => Log(LogLevel.Error, message);
+        public static void Debug(string message) => Log(LogLevel.Debug, message);
+        public static void Info(string message) => Log(LogLevel.Info, message);
+        public static void Warning(string message) => Log(LogLevel.Warning, message);
+        public static void Error(string message) => Log(LogLevel.Error, message);
+        public static void Critical(string message) => Log(LogLevel.Critical, message);
+
 
     }
 }

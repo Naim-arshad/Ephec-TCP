@@ -2,6 +2,7 @@
 using Shared.Protocol.TCP;
 using System.Net;
 using System.Net.Sockets;
+using Shared.Logging;
 
 namespace Receiver
 {
@@ -20,14 +21,14 @@ namespace Receiver
             Console.ReadLine();
             await receiver.DisposeAsync();
             */
-            TcpConnection tcpOverlayTransport = new TcpConnection(11000);
+            TcpConnection tcpOverlayTransport = new(11000);
 
             
 
             Console.ReadLine();
-            Console.WriteLine("En cours d'écoute...");
+            Logger.Info("En cours d'écoute...");
             Console.ReadLine();
-            Console.WriteLine("Fermeture...");
+            Logger.Info("Fermeture...");
         }
     }
 }
