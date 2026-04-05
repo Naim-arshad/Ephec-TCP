@@ -1,8 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net;
-using System.Security.Cryptography;
-using System.Text;
+﻿using System.Net;
+
 
 namespace Shared.Models
 {
@@ -14,8 +11,8 @@ namespace Shared.Models
 
         public Segment? LastSegmentReceived { get; private set; }
         public Segment? LastSegmentSent { get; private set; }
-        public long LastSentTimes { get; private set; }
-
+        public long LastActivity {  get; private set; }
+        public TimeSpan Timeout { get; private set; }
         private readonly Dictionary<ushort, Segment> _mapSegmentToRetransmit;
 
         public State CurrentState { get; private set; }
@@ -33,13 +30,14 @@ namespace Shared.Models
             TimeOut
         }
 
-        public ConnectionInfo(IPEndPoint endpoint)
+        public ConnectionInfo(IPEndPoint endpoint, TimeSpan timout)
         {
             ArgumentNullException.ThrowIfNull(endpoint);
 
             Endpoint = endpoint;
             CurrentState = State.Closed;
             _mapSegmentToRetransmit = [];
+            Timeout = timout;
         }
         public void BeginConnection(Segment segmentSent)
         {
@@ -49,7 +47,7 @@ namespace Shared.Models
             {
                 CurrentState = State.SynSent;
                 LastSegmentSent = segmentSent;
-                LastSentTimes = DateTime.UtcNow.Ticks;
+                LastActivity = DateTime.UtcNow.Ticks;
             }
         }
         public void UpdateConnectionInfo(State newState, Segment? lastSegmentReceived, Segment? lastSegmentSent)
@@ -62,9 +60,9 @@ namespace Shared.Models
                 LastSegmentReceived = lastSegmentReceived;
                 LastSegmentSent = lastSegmentSent;
                 CurrentState = newState;
-                LastSentTimes = DateTime.UtcNow.Ticks;
+                LastActivity = DateTime.UtcNow.Ticks;
 
-                if(lastSegmentSent != null)
+                if (lastSegmentSent != null)
                 {
                     Console.WriteLine($"Adding segment with sequence number {lastSegmentSent.SequenceNumber} to retransmission map.");
                     _mapSegmentToRetransmit.Add(lastSegmentSent.SequenceNumber, lastSegmentSent);
@@ -81,6 +79,15 @@ namespace Shared.Models
                     segment.AckReceived = true;
                     _mapSegmentToRetransmit.Remove(sequenceNumber);
                 }
+            }
+        }
+        public bool IsExpired()
+        {
+            lock (_sync)
+            {
+                long currentTicks = DateTime.UtcNow.Ticks;
+                return (currentTicks - LastActivity) > Timeout.Ticks;
+                
             }
         }
         public IEnumerable<Segment> GetSegmentsToRetransmit()

@@ -1,4 +1,5 @@
-﻿using Shared.Models;
+﻿using Shared.Logging;
+using Shared.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Net;
@@ -13,8 +14,9 @@ namespace Shared.Protocol.TCP
         private readonly static Random rand = new();
         private readonly TcpRetransmissionHandler _retransmissionHandler;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly TimeSpan _timeout;
 
-        public TcpConnection(int port)
+        public TcpConnection(int port, int timeout)
         {
             _mapConnection = new ConcurrentDictionary<string, ConnectionInfo>();
             _udpTransport = new UdpTransport(port);
@@ -24,42 +26,44 @@ namespace Shared.Protocol.TCP
 
             _retransmissionHandler = new TcpRetransmissionHandler(_udpTransport);
             _ = _retransmissionHandler.LoopRetransmissions(_mapConnection, _cancellationTokenSource.Token);
+
+            _timeout = TimeSpan.FromSeconds(timeout);
         }
 
         public void OnSegmentReceived(byte[] PacketBinary, IPEndPoint ip)
         {
-            Console.Write($"{ip}: ");
-            Segment segment = Segment.Deserialize(PacketBinary);
-            byte[] byteToSend;
+            Logger.Info($"Incoming Packet from IP:{ip}");
 
-            switch (segment.Flags.Value)
+            _mapConnection.TryGetValue(ip.ToString(), out ConnectionInfo? connectionInfo);
+            if (connectionInfo == null)
             {
-                case (byte)SegmentFlags.FlagOptions.Syn:
-                    byteToSend = TcpFlagHandler.HandleSYN(segment, ip, _mapConnection).Serialize();
-                    _ = _udpTransport.SendSegmentAsync(byteToSend, ip); 
-                    break;
-                case ((byte)SegmentFlags.FlagOptions.Syn | (byte)SegmentFlags.FlagOptions.Ack):
-                    Console.WriteLine("TODO: Gérer le SYN-ACK");
-                    break;
-                // Ajouter d'autres cas pour gérer différents types de segments
-                case (byte)SegmentFlags.FlagOptions.Ack:
-                    Console.WriteLine("TODO: Gérer l'ACK");
-                    break;
-                default:
-                    throw new Exception("Type de segment non géré");
+                connectionInfo = new(ip, _timeout);
+                _mapConnection[ip.ToString()] = connectionInfo;
             }
+            TCPSegmentProcessor.Process(
+                Segment.Deserialize(PacketBinary),
+                connectionInfo, 
+                _udpTransport,
+                _mapConnection);
+
         }
         
         public async Task SendSyn(IPEndPoint ip)
         {
             //TODO: implémenter sendSyn (ci-dessous est un code basique pour tester)
+            ConnectionInfo connectionInfo = new(ip, _timeout);
+            _mapConnection.TryAdd(ip.ToString(), connectionInfo);
             Segment packet = new(RandomSequenceNumber(0), new SegmentFlags(SegmentFlags.FlagOptions.Syn), new byte[0x02]);
+            connectionInfo.BeginConnection(packet);
+
             byte[] PacketBinary = packet.Serialize();
 
             _ = _udpTransport.SendSegmentAsync(
                 PacketBinary,
                 ip
             );
+
+            
         }
 
         public static ushort RandomSequenceNumber(ushort excludeNumber)

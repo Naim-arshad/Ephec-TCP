@@ -12,7 +12,7 @@ namespace Transmitter
         {
             
 
-            TcpConnection tcpOverlayTransport = new TcpConnection(12000);
+            TcpConnection tcpOverlayTransport = new TcpConnection(12000, 60);
 
             string? key = "";
             while (key != "q")

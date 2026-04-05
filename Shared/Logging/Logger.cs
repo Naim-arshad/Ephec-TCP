@@ -17,8 +17,8 @@ namespace Shared.Logging
 
         public static void Log(LogLevel level, string message)
         {
-            string timestamp = DateTime.UtcNow.ToString("o");
-            Console.WriteLine($"[{timestamp}] [{level}] {message}");
+            string timestamp = DateTime.UtcNow.ToString("HH:mm:ss.fff");
+            Console.Out.WriteLine($"[{timestamp}] [{level}] {message}");
         }
 
         public static void Debug(string message) => Log(LogLevel.Debug, message);

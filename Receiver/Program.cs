@@ -21,7 +21,7 @@ namespace Receiver
             Console.ReadLine();
             await receiver.DisposeAsync();
             */
-            TcpConnection tcpOverlayTransport = new(11000);
+            TcpConnection tcpOverlayTransport = new(11000, 60);
 
             
 

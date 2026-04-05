@@ -5,6 +5,7 @@ namespace Shared.Protocol.TCP
 {
     public class TcpRetransmissionHandler(UdpTransport udpTransport)
     {
+        //TODO : monter les info dans TCPConnection pour stantardiser les timesout
         private readonly UdpTransport _udpTransport = udpTransport;
         private readonly SemaphoreSlim _semaphore = new(5);
         private const int RetransmissionTimeout = 1000; // in milliseconds
