@@ -9,9 +9,10 @@ namespace Shared.Protocol.TCP
 
     public class TcpConnection
     {
+        private readonly static Random rand = new();
+
         private readonly ConcurrentDictionary<string, ConnectionInfo> _mapConnection;
         private readonly UdpTransport _udpTransport;
-        private readonly static Random rand = new();
         private readonly TcpRetransmissionHandler _retransmissionHandler;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly TimeSpan _timeout;

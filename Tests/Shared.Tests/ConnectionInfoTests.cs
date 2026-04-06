@@ -69,7 +69,7 @@ namespace Shared.Models.Tests
             var connectionInfo = CreateConnectionInfo();
 
             Assert.Throws<ArgumentException>(() =>
-                connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, null));
+                connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, null, false));
         }
 
         [Fact]
@@ -80,7 +80,7 @@ namespace Shared.Models.Tests
             connectionInfo.BeginConnection(sent);
 
             var received = CreateSegment(sequence: 21, flags: SegmentFlags.FlagOptions.Ack);
-            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, received, null);
+            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, received, null, false);
 
             Assert.Equal(ConnectionInfo.State.Established, connectionInfo.CurrentState);
             Assert.Same(received, connectionInfo.LastSegmentReceived);
@@ -96,7 +96,7 @@ namespace Shared.Models.Tests
             connectionInfo.BeginConnection(first);
 
             var second = CreateSegment(sequence: 32, flags: SegmentFlags.FlagOptions.Ack);
-            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, second);
+            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, second, true);
 
             var pending = connectionInfo.GetSegmentsToRetransmit().ToArray();
 
@@ -116,7 +116,7 @@ namespace Shared.Models.Tests
             var duplicateSequence = CreateSegment(sequence: 40, flags: SegmentFlags.FlagOptions.Ack);
 
             Assert.Throws<ArgumentException>(() =>
-                connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, duplicateSequence));
+                connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, duplicateSequence, true));
         }
 
         [Fact]
@@ -201,7 +201,7 @@ namespace Shared.Models.Tests
             var first = CreateSegment(sequence: 90, flags: SegmentFlags.FlagOptions.Syn);
             var second = CreateSegment(sequence: 91, flags: SegmentFlags.FlagOptions.Ack);
             connectionInfo.BeginConnection(first);
-            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, second);
+            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, second, true);
 
             var snapshot = connectionInfo.GetSegmentsToRetransmit().ToList();
             snapshot.Clear();

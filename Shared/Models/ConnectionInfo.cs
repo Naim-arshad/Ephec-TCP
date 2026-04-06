@@ -14,10 +14,14 @@ namespace Shared.Models
 
         public Segment? LastSegmentReceived { get; private set; }
         public Segment? LastSegmentSent { get; private set; }
+        private int _lastSegmentAckReceivedCount;
+        public bool ActiveRetransmission { get; private set; }
         public long LastActivity {  get; private set; }
         private ushort _sequencerId;
+        private ushort _nextExpectedSequenceNumber;
         public TimeSpan Timeout { get; private set; }
         private readonly Dictionary<ushort, Segment> _mapSegmentToRetransmit;
+        private readonly SortedDictionary<ushort, Segment> _maporderedSegmentsReceived;
 
         public State CurrentState { get; private set; }
         public enum State
@@ -43,6 +47,8 @@ namespace Shared.Models
             _mapSegmentToRetransmit = [];
             Timeout = timout;
             _sequencerId = TcpConnection.RandomSequenceNumber(0);
+            _lastSegmentAckReceivedCount = 0;
+            ActiveRetransmission = false;
         }
         public void BeginConnection(Segment segmentSent)
         {
@@ -50,10 +56,10 @@ namespace Shared.Models
 
             lock (_sync)
             {
-                UpdateConnectionInfo(State.SynSent, null, segmentSent);
+                UpdateConnectionInfo(State.SynSent, null, segmentSent, true);
             }
         }
-        public void UpdateConnectionInfo(State newState, Segment? lastSegmentReceived, Segment? lastSegmentSent)
+        public void UpdateConnectionInfo(State newState, Segment? lastSegmentReceived, Segment? lastSegmentSent, bool toBeAck)
         {
             if (lastSegmentReceived == null && lastSegmentSent == null)
                 throw new ArgumentException("At least one of lastSegmentReceived or lastSegmentSent must be non-null.");
@@ -66,7 +72,7 @@ namespace Shared.Models
                 LastActivity = DateTime.UtcNow.Ticks;
 
                 Logger.Info($"Update Connection state : {newState}");
-                if (lastSegmentSent != null)
+                if (lastSegmentSent != null && toBeAck)
                 {
                     Logger.Debug($"Adding segment with sequence number {lastSegmentSent.SequenceNumber} and flag {lastSegmentSent.Flags.Value} to retransmission map.");
                     _mapSegmentToRetransmit.Add(lastSegmentSent.SequenceNumber, lastSegmentSent);
@@ -74,15 +80,24 @@ namespace Shared.Models
                     
             }
         }
-        public void MarkSegmentAsAcknowledged(ushort sequenceNumber)
+        public bool MarkSegmentAsAcknowledged(Segment segment)
         {
             lock (_sync)
             {
-                if (_mapSegmentToRetransmit.TryGetValue(sequenceNumber, out var segment))
+                if(segment.SequenceNumber == (LastSegmentReceived?.SequenceNumber+1))
                 {
-                    segment.AckReceived = true;
-                    _mapSegmentToRetransmit.Remove(sequenceNumber);
+                    if (_mapSegmentToRetransmit.TryGetValue(segment.GetDataToSequence(), out var segmentSaved))
+                    {
+                        Logger.Debug($"Acknowledging segment with sequence number {segment.GetDataToSequence()}.");
+                        segmentSaved.AckReceived = true;
+                        return _mapSegmentToRetransmit.Remove(segment.GetDataToSequence());
+                    } else if(LastSegmentReceived != null && segment.GetDataToSequence() == LastSegmentReceived.GetDataToSequence())
+                    {
+                        Logger.Warning($"Received ACK for segment with sequence number {segment.GetDataToSequence()} which is not in the retransmission map but matches the last segment sent.");
+                        _lastSegmentAckReceivedCount++;
+                    }
                 }
+                return false;
             }
         }
         public bool IsExpired()
@@ -91,7 +106,6 @@ namespace Shared.Models
             {
                 long currentTicks = DateTime.UtcNow.Ticks;
                 return (currentTicks - LastActivity) > Timeout.Ticks;
-                
             }
         }
         public bool CheckSequenceNumber(ushort sequenceNumber)

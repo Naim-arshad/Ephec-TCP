@@ -9,8 +9,8 @@ namespace Shared.Protocol.TCP
         //TODO : monter les info dans TCPConnection pour stantardiser les timesout
         private readonly UdpTransport _udpTransport = udpTransport;
         private readonly SemaphoreSlim _semaphore = new(5);
-        private const int RetransmissionTimeout = 1000; // in milliseconds
-        private const int MaxRetransmissions = 5;
+        private const int RetransmissionTimeout = 5000; // in milliseconds
+        private const int MaxRetransmissions = 2;
 
         public async Task LoopRetransmissions(
             ConcurrentDictionary<string, ConnectionInfo> mapConnection,
@@ -32,9 +32,7 @@ namespace Shared.Protocol.TCP
                     {
                         foreach (var segment in connection.Value.GetSegmentsToRetransmit())
                         {
-                            
-
-                            if (segment.RetransmissionCount < MaxRetransmissions)
+                            if (segment.RetransmissionCount < MaxRetransmissions && connection.Value.ActiveRetransmission)
                             {
                                 _ = Task.Run(async () =>
                                 {
@@ -67,6 +65,8 @@ namespace Shared.Protocol.TCP
                                 break; // Exit the loop for this connection since it's being removed.
                             }
                         }
+
+                        //TODO désactivé la retransmission active après un certain nombre de retransmissions ou après un certain temps d'inactivité pour éviter les boucles infinies de retransmissions.
                     }
                 }
             }

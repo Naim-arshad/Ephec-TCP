@@ -20,7 +20,7 @@ namespace Shared.Protocol.TCP
                     byteToSend = HandleSynAck(segment, connectionInfo, mapConnection).Serialize();
                     break;
                 case (byte)SegmentFlags.FlagOptions.Ack:
-                    HandleAck(segment, connectionInfo, mapConnection);
+                    byteToSend = HandleAck(segment, connectionInfo, mapConnection);
                     break;
                 case (byte)SegmentFlags.FlagOptions.Rst:
                     Logger.Debug($"Received Rst segment from {connectionInfo.Endpoint}. Handling Rst segment.");
@@ -37,7 +37,7 @@ namespace Shared.Protocol.TCP
         private static Segment HandleSyn(Segment segment, ConnectionInfo connectionInfo,
             ConcurrentDictionary<string, ConnectionInfo> mapConnection)
         {
-            Logger.Debug($"Handling SYN segment: {segment}");
+            Logger.Debug($"Handling SYN segment: {segment.SequenceNumber}");
             Segment segmentToSend;
             if (connectionInfo.CurrentState != ConnectionInfo.State.Closed)
             {
@@ -49,15 +49,16 @@ namespace Shared.Protocol.TCP
             else
             {
                 segmentToSend = TCPSegmentBuilder.BuildSynAck(connectionInfo, segment);
-                connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.SynReceived, segment, segmentToSend);
+                connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.SynReceived, segment, segmentToSend, true);
             }
+            Logger.Debug($"Segment responded with {segmentToSend.SequenceNumber}");
             return segmentToSend;
         }
         private static Segment HandleSynAck(Segment segment, ConnectionInfo connectionInfo,
             ConcurrentDictionary<string, ConnectionInfo> mapConnection)
         {
             
-            Logger.Debug($"Handling SYN-ACK segment: {segment}");
+            Logger.Debug($"Handling SYN-ACK segment: {segment.SequenceNumber}");
             Segment segmentToSend;
             if (connectionInfo.CurrentState != ConnectionInfo.State.SynSent)
             {
@@ -83,21 +84,34 @@ namespace Shared.Protocol.TCP
                 } else
                 {
                     segmentToSend = TCPSegmentBuilder.BuildAck(segment, connectionInfo);
-                    connectionInfo.MarkSegmentAsAcknowledged(connectionInfo.LastSegmentSent.SequenceNumber);
-                    connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, segment, segmentToSend);
-                    connectionInfo.MarkSegmentAsAcknowledged(segmentToSend.SequenceNumber);
+                    connectionInfo.MarkSegmentAsAcknowledged(segment);
+                    connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, segment, segmentToSend, false);
                     Logger.Info($"Connection established with {connectionInfo.Endpoint}");
                 }
             }
+            Logger.Debug($"Segment responded with {segmentToSend.SequenceNumber}");
             return segmentToSend;
         }
-        private static Segment HandleAck(Segment segment, ConnectionInfo connectionInfo,
+        private static byte[] HandleAck(Segment segment, ConnectionInfo connectionInfo,
             ConcurrentDictionary<string, ConnectionInfo> mapConnection)
         {
             Logger.Debug($"Handling ACK segment: {segment}");
-            connectionInfo.MarkSegmentAsAcknowledged(segment.GetDataToSequence());
-            Logger.Debug($"Connection established with IP : {connectionInfo.Endpoint}");
-            return null;
+            
+            if(connectionInfo.MarkSegmentAsAcknowledged(segment))
+            {
+                if (connectionInfo.LastSegmentSent?.Flags.Value == (byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack))
+                {
+                    Logger.Debug($"Connection established with IP : {connectionInfo.Endpoint}");
+                    return [];
+                }
+            } else
+            {
+                Logger.Error($"Received ACK segment with invalid sequence number. Expected: {connectionInfo.LastSegmentSent?.SequenceNumber}, Received: {segment.GetDataToSequence()}. Sending RST.");
+                var segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo);
+                mapConnection.TryRemove(connectionInfo.Endpoint.ToString(), out _);
+                return segmentToSend.Serialize();
+            }
+            return [];
         }
     }
 }
