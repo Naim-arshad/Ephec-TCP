@@ -1,4 +1,5 @@
-﻿using Shared.Models;
+﻿using Shared.Logging;
+using Shared.Models;
 using System.Collections.Concurrent;
 
 namespace Shared.Protocol.TCP
@@ -39,6 +40,8 @@ namespace Shared.Protocol.TCP
                                 {
                                     try
                                     {
+                                        Logger.Debug($"Retransmitting segment with sequence number {segment.SequenceNumber} " +
+                                            $"to {connection.Value.Endpoint}. Retransmission count: {segment.RetransmissionCount + 1}");
                                         await _semaphore.WaitAsync(cancellationToken);
                                         await _udpTransport.SendSegmentAsync(segment.Serialize(), connection.Value.Endpoint);
                                         segment.IncrementRetransmissionCount();

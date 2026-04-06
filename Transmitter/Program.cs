@@ -18,7 +18,7 @@ namespace Transmitter
             while (key != "q")
             {
                 Console.WriteLine("Sending packet...");
-                await tcpOverlayTransport.SendSyn(IPEndPoint.Parse("127.0.0.1:11000"));
+                await tcpOverlayTransport.InitiatConnection("127.0.0.1:11000");
                 key = Console.ReadLine();
             }
 

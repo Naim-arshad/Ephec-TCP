@@ -88,6 +88,11 @@ namespace Shared.Models
             return sequenceBuffer.ToArray();
         }
 
+        public ushort GetDataToSequence()
+        {
+            return BinaryPrimitives.ReadUInt16BigEndian(Data);
+        }
+
         public void IncrementRetransmissionCount()
         {
             RetransmissionCount++;

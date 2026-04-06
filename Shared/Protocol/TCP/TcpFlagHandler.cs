@@ -4,7 +4,7 @@ using System.Net;
 using Shared.Logging;
 
 namespace Shared.Protocol.TCP
-{
+{ /*
     public class TcpFlagHandler
     {
         /// <summary>
@@ -130,5 +130,5 @@ namespace Shared.Protocol.TCP
                 segmentToSend);
             return segmentToSend;
         }
-    }
+    }*/
 }

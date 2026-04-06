@@ -1,4 +1,6 @@
 ﻿using System.Net;
+using System;
+using Shared.Logging;
 
 
 namespace Shared.Models
@@ -48,6 +50,12 @@ namespace Shared.Models
                 CurrentState = State.SynSent;
                 LastSegmentSent = segmentSent;
                 LastActivity = DateTime.UtcNow.Ticks;
+
+                if (LastSegmentSent != null)
+                {
+                    Logger.Debug($"Adding segment with sequence number {LastSegmentSent.SequenceNumber} to retransmission map.");
+                    _mapSegmentToRetransmit.Add(LastSegmentSent.SequenceNumber, LastSegmentSent);
+                }
             }
         }
         public void UpdateConnectionInfo(State newState, Segment? lastSegmentReceived, Segment? lastSegmentSent)
@@ -64,7 +72,7 @@ namespace Shared.Models
 
                 if (lastSegmentSent != null)
                 {
-                    Console.WriteLine($"Adding segment with sequence number {lastSegmentSent.SequenceNumber} to retransmission map.");
+                    Logger.Debug($"Adding segment with sequence number {lastSegmentSent.SequenceNumber} to retransmission map.");
                     _mapSegmentToRetransmit.Add(lastSegmentSent.SequenceNumber, lastSegmentSent);
                 }
                     

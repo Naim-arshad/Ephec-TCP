@@ -40,30 +40,29 @@ namespace Shared.Protocol.TCP
                 connectionInfo = new(ip, _timeout);
                 _mapConnection[ip.ToString()] = connectionInfo;
             }
-            TCPSegmentProcessor.Process(
+            _ = _udpTransport.SendSegmentAsync(TCPSegmentProcessor.Process(
                 Segment.Deserialize(PacketBinary),
                 connectionInfo, 
                 _udpTransport,
-                _mapConnection);
+                _mapConnection),
+                ip);
 
         }
-        
-        public async Task SendSyn(IPEndPoint ip)
-        {
-            //TODO: implémenter sendSyn (ci-dessous est un code basique pour tester)
-            ConnectionInfo connectionInfo = new(ip, _timeout);
-            _mapConnection.TryAdd(ip.ToString(), connectionInfo);
-            Segment packet = new(RandomSequenceNumber(0), new SegmentFlags(SegmentFlags.FlagOptions.Syn), new byte[0x02]);
-            connectionInfo.BeginConnection(packet);
 
-            byte[] PacketBinary = packet.Serialize();
+        public async Task InitiatConnection(string ip)
+        {
+            Logger.Info("Initiating connection to IP:" + ip);
+
+            IPEndPoint endPoint = IPEndPoint.Parse(ip);
+            ConnectionInfo connectionInfo = new(endPoint, _timeout);
+            Segment segment = TCPSegmentBuilder.BuildSyn();
+
+            _mapConnection.TryAdd(endPoint.ToString(), connectionInfo);
+            connectionInfo.BeginConnection(segment);
 
             _ = _udpTransport.SendSegmentAsync(
-                PacketBinary,
-                ip
-            );
-
-            
+                segment.Serialize(), 
+                endPoint);
         }
 
         public static ushort RandomSequenceNumber(ushort excludeNumber)
