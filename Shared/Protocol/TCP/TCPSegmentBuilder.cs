@@ -5,40 +5,34 @@ namespace Shared.Protocol.TCP
 {
     public class TCPSegmentBuilder
     {
-        public static Segment BuildSyn()
+        public static Segment BuildSyn(ConnectionInfo connection)
         {
             return new Segment(
-                sequence: TcpConnection.RandomSequenceNumber(0),
-                flags: new ((byte)SegmentFlags.FlagOptions.Syn),
+                sequence: connection.GetNextSequenceNumber(),
+                flags: new((byte)SegmentFlags.FlagOptions.Syn),
                 data: []);
                 
         }
-        public static Segment BuildSynAck(Segment segmentReceived)
+        public static Segment BuildSynAck(ConnectionInfo connection, Segment segment)
         {
             return new Segment(
-                sequence: TcpConnection.RandomSequenceNumber(0),
+                sequence: connection.GetNextSequenceNumber(),
                 flags: new ((byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack)),
-                data: segmentReceived.GetSequenceToBytes()
+                data: segment.GetSequenceToBytes()
                 );
         }
-        public static Segment BuildRst(Segment segmentReceived, Segment? lastSegmentSent)
+        public static Segment BuildRst(Segment segmentReceived, ConnectionInfo connection)
         {
-            int lastSequenceSent = lastSegmentSent != null ?
-                        lastSegmentSent.SequenceNumber : TcpConnection.RandomSequenceNumber(segmentReceived.SequenceNumber);
-            lastSequenceSent++;
             return new Segment(
-                sequence: (ushort)lastSequenceSent,
+                sequence: connection.GetNextSequenceNumber(),
                 flags: new ((byte)SegmentFlags.FlagOptions.Rst),
                 data: segmentReceived.GetSequenceToBytes()
                 );
         }
-        public static Segment BuildAck(Segment segmentReceived, Segment? lastSegmentSent)
+        public static Segment BuildAck(Segment segmentReceived, ConnectionInfo connection)
         {
-            int lastSequenceSent = lastSegmentSent != null ?
-                        lastSegmentSent.SequenceNumber : TcpConnection.RandomSequenceNumber(segmentReceived.SequenceNumber);
-            lastSequenceSent++;
             return new Segment(
-                sequence: (ushort)lastSequenceSent,
+                sequence: connection.GetNextSequenceNumber(),
                 flags: new ((byte)SegmentFlags.FlagOptions.Ack),
                 data: segmentReceived.GetSequenceToBytes()
                 );

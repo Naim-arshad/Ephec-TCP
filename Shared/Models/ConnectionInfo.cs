@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System;
 using Shared.Logging;
+using Shared.Protocol.TCP;
 
 
 namespace Shared.Models
@@ -14,6 +15,7 @@ namespace Shared.Models
         public Segment? LastSegmentReceived { get; private set; }
         public Segment? LastSegmentSent { get; private set; }
         public long LastActivity {  get; private set; }
+        private ushort _sequencerId;
         public TimeSpan Timeout { get; private set; }
         private readonly Dictionary<ushort, Segment> _mapSegmentToRetransmit;
 
@@ -40,6 +42,7 @@ namespace Shared.Models
             CurrentState = State.Closed;
             _mapSegmentToRetransmit = [];
             Timeout = timout;
+            _sequencerId = TcpConnection.RandomSequenceNumber(0);
         }
         public void BeginConnection(Segment segmentSent)
         {
@@ -47,15 +50,7 @@ namespace Shared.Models
 
             lock (_sync)
             {
-                CurrentState = State.SynSent;
-                LastSegmentSent = segmentSent;
-                LastActivity = DateTime.UtcNow.Ticks;
-
-                if (LastSegmentSent != null)
-                {
-                    Logger.Debug($"Adding segment with sequence number {LastSegmentSent.SequenceNumber} to retransmission map.");
-                    _mapSegmentToRetransmit.Add(LastSegmentSent.SequenceNumber, LastSegmentSent);
-                }
+                UpdateConnectionInfo(State.SynSent, null, segmentSent);
             }
         }
         public void UpdateConnectionInfo(State newState, Segment? lastSegmentReceived, Segment? lastSegmentSent)
@@ -65,14 +60,15 @@ namespace Shared.Models
 
             lock (_sync)
             {
-                LastSegmentReceived = lastSegmentReceived;
-                LastSegmentSent = lastSegmentSent;
+                LastSegmentReceived = lastSegmentReceived != null ? lastSegmentReceived : LastSegmentReceived;
+                LastSegmentSent = lastSegmentSent != null ? lastSegmentSent : LastSegmentSent;
                 CurrentState = newState;
                 LastActivity = DateTime.UtcNow.Ticks;
 
+                Logger.Info($"Update Connection state : {newState}");
                 if (lastSegmentSent != null)
                 {
-                    Logger.Debug($"Adding segment with sequence number {lastSegmentSent.SequenceNumber} to retransmission map.");
+                    Logger.Debug($"Adding segment with sequence number {lastSegmentSent.SequenceNumber} and flag {lastSegmentSent.Flags.Value} to retransmission map.");
                     _mapSegmentToRetransmit.Add(lastSegmentSent.SequenceNumber, lastSegmentSent);
                 }
                     
@@ -96,6 +92,24 @@ namespace Shared.Models
                 long currentTicks = DateTime.UtcNow.Ticks;
                 return (currentTicks - LastActivity) > Timeout.Ticks;
                 
+            }
+        }
+        public bool CheckSequenceNumber(ushort sequenceNumber)
+        {
+            lock (_sync)
+            {
+                if(LastSegmentSent == null)
+                    throw new(nameof(LastSegmentSent));
+                return sequenceNumber == LastSegmentSent.SequenceNumber;
+            }
+        }
+        public ushort GetNextSequenceNumber()
+        {
+            lock (_sync)
+            {
+                ushort currentSequence = _sequencerId;
+                _sequencerId++;
+                return currentSequence;
             }
         }
         public IEnumerable<Segment> GetSegmentsToRetransmit()

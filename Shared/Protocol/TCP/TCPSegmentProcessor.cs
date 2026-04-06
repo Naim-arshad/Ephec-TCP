@@ -6,7 +6,7 @@ namespace Shared.Protocol.TCP
 {
     public class TCPSegmentProcessor
     {
-        public static byte[] Process(Segment segment, ConnectionInfo connectionInfo, UdpTransport udpTransport,
+        public static byte[] Process(Segment segment, ConnectionInfo connectionInfo,
             ConcurrentDictionary<string, ConnectionInfo> mapConnection)
         {
             byte[] byteToSend = [];
@@ -24,7 +24,7 @@ namespace Shared.Protocol.TCP
                     break;
                 case (byte)SegmentFlags.FlagOptions.Rst:
                     Logger.Debug($"Received Rst segment from {connectionInfo.Endpoint}. Handling Rst segment.");
-                    //TODO HandleFin(segment, connectionInfo, mapConnection);
+                    //TODO HandleRst(segment, connectionInfo, mapConnection);
                     break;
                 default:
                     Logger.Error($"{segment.Flags.Value} : Type de segment non géré");
@@ -43,20 +43,12 @@ namespace Shared.Protocol.TCP
             {
                 Logger.Error($"Received SYN segment for an active connection from {connectionInfo.Endpoint}. Sending RST.");
                 
-                segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo.LastSegmentSent);
+                segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo);
                 mapConnection.TryRemove(connectionInfo.Endpoint.ToString(), out _);
             }
             else
             {
-                if (connectionInfo.LastSegmentSent != null &&
-                    connectionInfo.LastSegmentSent.Flags.Value == (byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack))
-                {
-                    segmentToSend = connectionInfo.LastSegmentSent;
-                }
-                else
-                {
-                    segmentToSend = TCPSegmentBuilder.BuildSynAck(segment);
-                }
+                segmentToSend = TCPSegmentBuilder.BuildSynAck(connectionInfo, segment);
                 connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.SynReceived, segment, segmentToSend);
             }
             return segmentToSend;
@@ -70,7 +62,7 @@ namespace Shared.Protocol.TCP
             if (connectionInfo.CurrentState != ConnectionInfo.State.SynSent)
             {
                 Logger.Error($"Received SYN-ACK segment for a connection that is not in SYN_Sent state from {connectionInfo.Endpoint}. Sending RST.");
-                segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo.LastSegmentSent);
+                segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo);
                 mapConnection.TryRemove(connectionInfo.Endpoint.ToString(), out _);
             }
             else
@@ -79,18 +71,18 @@ namespace Shared.Protocol.TCP
                 {
                     Logger.Error($"LastSegmentSent cannot be null while receiving SYN-ACK segment in Syn_Sent State from {connectionInfo.Endpoint}");
                     mapConnection.TryRemove(connectionInfo.Endpoint.ToString(), out _);
-                    return TCPSegmentBuilder.BuildRst(segment, connectionInfo.LastSegmentSent);
+                    return TCPSegmentBuilder.BuildRst(segment, connectionInfo);
                 }
                     
 
-                if(connectionInfo.LastSegmentSent.SequenceNumber != segment.GetDataToSequence())
+                if(!connectionInfo.CheckSequenceNumber(segment.GetDataToSequence()))
                 {
-                    Logger.Error($"Received SYN-ACK segment with unexpected sequence number from {connectionInfo.Endpoint}. Expected: {connectionInfo.LastSegmentSent.SequenceNumber}, Received: {BitConverter.ToUInt16(segment.Data, 0)}. Sending RST.");
-                    segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo.LastSegmentSent);
+                    Logger.Error($"Received SYN-ACK segment with invalid sequence number. Expected: {connectionInfo.LastSegmentSent.SequenceNumber}, Received: {segment.GetDataToSequence()}. Sending RST.");
+                    segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo);
                     mapConnection.TryRemove(connectionInfo.Endpoint.ToString(), out _);
                 } else
                 {
-                    segmentToSend = TCPSegmentBuilder.BuildAck(segment, connectionInfo.LastSegmentSent);
+                    segmentToSend = TCPSegmentBuilder.BuildAck(segment, connectionInfo);
                     connectionInfo.MarkSegmentAsAcknowledged(connectionInfo.LastSegmentSent.SequenceNumber);
                     connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, segment, segmentToSend);
                     connectionInfo.MarkSegmentAsAcknowledged(segmentToSend.SequenceNumber);
@@ -103,7 +95,7 @@ namespace Shared.Protocol.TCP
             ConcurrentDictionary<string, ConnectionInfo> mapConnection)
         {
             Logger.Debug($"Handling ACK segment: {segment}");
-            connectionInfo.MarkSegmentAsAcknowledged(segment.SequenceNumber);
+            connectionInfo.MarkSegmentAsAcknowledged(segment.GetDataToSequence());
             Logger.Debug($"Connection established with IP : {connectionInfo.Endpoint}");
             return null;
         }

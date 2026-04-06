@@ -1,4 +1,5 @@
-﻿using System.Buffers.Binary;
+﻿using Shared.Logging;
+using System.Buffers.Binary;
 
 namespace Shared.Models
 {
@@ -44,7 +45,11 @@ namespace Shared.Models
 
         public byte[] Serialize()
         {
-            // Le paquet est composé de : 0-1 : longueur des données (16 bits) 2-3 : numéro de séquence (16 bits) 4 : flags (8 bits) 5-n : données
+            // Le paquet est composé de :
+            // 0-1 : longueur des données (16 bits)
+            // 2-3 : numéro de séquence (16 bits)
+            // 4 : flags (8 bits)
+            // 5-n : données
             int packetLength = 5 + Data.Length;
             using var stream = new MemoryStream(packetLength);
 
@@ -87,10 +92,12 @@ namespace Shared.Models
             BinaryPrimitives.WriteUInt16BigEndian(sequenceBuffer, SequenceNumber);
             return sequenceBuffer.ToArray();
         }
-
         public ushort GetDataToSequence()
         {
-            return BinaryPrimitives.ReadUInt16BigEndian(Data);
+            if (Data == null || Data.Length != 2)
+                throw new InvalidOperationException("Data doit contenir exactement 2 octets pour représenter une séquence.");
+
+            return BinaryPrimitives.ReadUInt16BigEndian(Data.AsSpan(0, 2));
         }
 
         public void IncrementRetransmissionCount()

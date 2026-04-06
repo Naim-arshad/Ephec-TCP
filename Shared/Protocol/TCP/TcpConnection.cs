@@ -40,13 +40,9 @@ namespace Shared.Protocol.TCP
                 connectionInfo = new(ip, _timeout);
                 _mapConnection[ip.ToString()] = connectionInfo;
             }
-            _ = _udpTransport.SendSegmentAsync(TCPSegmentProcessor.Process(
-                Segment.Deserialize(PacketBinary),
-                connectionInfo, 
-                _udpTransport,
-                _mapConnection),
-                ip);
-
+            byte[] packet = TCPSegmentProcessor.Process(Segment.Deserialize(PacketBinary), connectionInfo, _mapConnection);
+            if(packet != null && packet.Length >= 5)
+                _ = _udpTransport.SendSegmentAsync(packet, ip);
         }
 
         public async Task InitiatConnection(string ip)
@@ -55,7 +51,7 @@ namespace Shared.Protocol.TCP
 
             IPEndPoint endPoint = IPEndPoint.Parse(ip);
             ConnectionInfo connectionInfo = new(endPoint, _timeout);
-            Segment segment = TCPSegmentBuilder.BuildSyn();
+            Segment segment = TCPSegmentBuilder.BuildSyn(connectionInfo);
 
             _mapConnection.TryAdd(endPoint.ToString(), connectionInfo);
             connectionInfo.BeginConnection(segment);
