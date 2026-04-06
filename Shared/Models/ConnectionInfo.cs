@@ -99,7 +99,7 @@ namespace Shared.Models
             lock (_sync)
             {
                 if(LastSegmentSent == null)
-                    throw new(nameof(LastSegmentSent));
+                    throw new ArgumentNullException(nameof(LastSegmentSent));
                 return sequenceNumber == LastSegmentSent.SequenceNumber;
             }
         }
