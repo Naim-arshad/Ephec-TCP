@@ -1,13 +1,14 @@
 ﻿using Shared.Logging;
 using Shared.Models;
+using Shared.Models.Connection;
 using System.Collections.Concurrent;
 
 namespace Shared.Protocol.TCP
 {
     public class TCPSegmentProcessor
     {
-        public static byte[] Process(Segment segment, ConnectionInfo connectionInfo,
-            ConcurrentDictionary<string, ConnectionInfo> mapConnection)
+        public static byte[] Process(Segment segment, Connection connectionInfo,
+            ConcurrentDictionary<string, Connection> mapConnection)
         {
             byte[] byteToSend = [];
 
@@ -34,12 +35,12 @@ namespace Shared.Protocol.TCP
             return byteToSend;
         }
 
-        private static Segment HandleSyn(Segment segment, ConnectionInfo connectionInfo,
-            ConcurrentDictionary<string, ConnectionInfo> mapConnection)
+        private static Segment HandleSyn(Segment segment, Connection connectionInfo,
+            ConcurrentDictionary<string, Connection> mapConnection)
         {
             Logger.Debug($"Handling SYN segment: {segment.SequenceNumber}");
             Segment segmentToSend;
-            if (connectionInfo.CurrentState != ConnectionInfo.State.Closed)
+            if (connectionInfo.CurrentState != Connection.State.Closed)
             {
                 Logger.Error($"Received SYN segment for an active connection from {connectionInfo.Endpoint}. Sending RST.");
                 
@@ -49,18 +50,18 @@ namespace Shared.Protocol.TCP
             else
             {
                 segmentToSend = TCPSegmentBuilder.BuildSynAck(connectionInfo, segment);
-                connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.SynReceived, segment, segmentToSend, true);
+                connectionInfo.UpdateConnectionInfo(Connection.State.SynReceived, segment, segmentToSend, true);
             }
             Logger.Debug($"Segment responded with {segmentToSend.SequenceNumber}");
             return segmentToSend;
         }
-        private static Segment HandleSynAck(Segment segment, ConnectionInfo connectionInfo,
-            ConcurrentDictionary<string, ConnectionInfo> mapConnection)
+        private static Segment HandleSynAck(Segment segment, Connection connectionInfo,
+            ConcurrentDictionary<string, Connection> mapConnection)
         {
             
             Logger.Debug($"Handling SYN-ACK segment: {segment.SequenceNumber}");
             Segment segmentToSend;
-            if (connectionInfo.CurrentState != ConnectionInfo.State.SynSent)
+            if (connectionInfo.CurrentState != Connection.State.SynSent)
             {
                 Logger.Error($"Received SYN-ACK segment for a connection that is not in SYN_Sent state from {connectionInfo.Endpoint}. Sending RST.");
                 segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo);
@@ -85,15 +86,15 @@ namespace Shared.Protocol.TCP
                 {
                     segmentToSend = TCPSegmentBuilder.BuildAck(segment, connectionInfo);
                     connectionInfo.MarkSegmentAsAcknowledged(segment);
-                    connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, segment, segmentToSend, false);
+                    connectionInfo.UpdateConnectionInfo(Connection.State.Established, segment, segmentToSend, false);
                     Logger.Info($"Connection established with {connectionInfo.Endpoint}");
                 }
             }
             Logger.Debug($"Segment responded with {segmentToSend.SequenceNumber}");
             return segmentToSend;
         }
-        private static byte[] HandleAck(Segment segment, ConnectionInfo connectionInfo,
-            ConcurrentDictionary<string, ConnectionInfo> mapConnection)
+        private static byte[] HandleAck(Segment segment, Connection connectionInfo,
+            ConcurrentDictionary<string, Connection> mapConnection)
         {
             Logger.Debug($"Handling ACK segment: {segment}");
             

@@ -1,11 +1,12 @@
 ﻿using Shared.Models;
+using Shared.Models.Connection;
 
 
 namespace Shared.Protocol.TCP
 {
     public class TCPSegmentBuilder
     {
-        public static Segment BuildSyn(ConnectionInfo connection)
+        public static Segment BuildSyn(Connection connection)
         {
             return new Segment(
                 sequence: connection.GetNextSequenceNumber(),
@@ -13,7 +14,7 @@ namespace Shared.Protocol.TCP
                 data: []);
                 
         }
-        public static Segment BuildSynAck(ConnectionInfo connection, Segment segment)
+        public static Segment BuildSynAck(Connection connection, Segment segment)
         {
             return new Segment(
                 sequence: connection.GetNextSequenceNumber(),
@@ -21,7 +22,7 @@ namespace Shared.Protocol.TCP
                 data: segment.GetSequenceToBytes()
                 );
         }
-        public static Segment BuildRst(Segment segmentReceived, ConnectionInfo connection)
+        public static Segment BuildRst(Segment segmentReceived, Connection connection)
         {
             return new Segment(
                 sequence: connection.GetNextSequenceNumber(),
@@ -29,7 +30,7 @@ namespace Shared.Protocol.TCP
                 data: segmentReceived.GetSequenceToBytes()
                 );
         }
-        public static Segment BuildAck(Segment segmentReceived, ConnectionInfo connection)
+        public static Segment BuildAck(Segment segmentReceived, Connection connection)
         {
             return new Segment(
                 sequence: connection.GetNextSequenceNumber(),

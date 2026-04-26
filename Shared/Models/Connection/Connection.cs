@@ -4,9 +4,9 @@ using Shared.Logging;
 using Shared.Protocol.TCP;
 
 
-namespace Shared.Models
+namespace Shared.Models.Connection
 {
-    public class ConnectionInfo
+    public class Connection
     {
         public readonly IPEndPoint Endpoint;
 
@@ -14,14 +14,14 @@ namespace Shared.Models
 
         public Segment? LastSegmentReceived { get; private set; }
         public Segment? LastSegmentSent { get; private set; }
-        private int _lastSegmentAckReceivedCount;
+        private int _lastSegmentAckReceivedDuplicateCount;
         public bool ActiveRetransmission { get; private set; }
         public long LastActivity {  get; private set; }
         private ushort _sequencerId;
         private ushort _nextExpectedSequenceNumber;
         public TimeSpan Timeout { get; private set; }
         private readonly Dictionary<ushort, Segment> _mapSegmentToRetransmit;
-        private readonly SortedDictionary<ushort, Segment> _maporderedSegmentsReceived;
+        private readonly SortedDictionary<ushort, Segment> _mapOrderedSegmentReceived;
 
         public State CurrentState { get; private set; }
         public enum State
@@ -38,16 +38,17 @@ namespace Shared.Models
             TimeOut
         }
 
-        public ConnectionInfo(IPEndPoint endpoint, TimeSpan timout)
+        public Connection(IPEndPoint endpoint, TimeSpan timout)
         {
             ArgumentNullException.ThrowIfNull(endpoint);
 
             Endpoint = endpoint;
             CurrentState = State.Closed;
             _mapSegmentToRetransmit = [];
+            _mapOrderedSegmentReceived = [];
             Timeout = timout;
             _sequencerId = TcpConnection.RandomSequenceNumber(0);
-            _lastSegmentAckReceivedCount = 0;
+            _lastSegmentAckReceivedDuplicateCount = 0;
             ActiveRetransmission = false;
         }
         public void BeginConnection(Segment segmentSent)
@@ -94,7 +95,7 @@ namespace Shared.Models
                     } else if(LastSegmentReceived != null && segment.GetDataToSequence() == LastSegmentReceived.GetDataToSequence())
                     {
                         Logger.Warning($"Received ACK for segment with sequence number {segment.GetDataToSequence()} which is not in the retransmission map but matches the last segment sent.");
-                        _lastSegmentAckReceivedCount++;
+                        //_lastSegmentAckReceivedCount++;
                     }
                 }
                 return false;

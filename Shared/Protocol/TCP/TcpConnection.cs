@@ -1,5 +1,6 @@
 ﻿using Shared.Logging;
 using Shared.Models;
+using Shared.Models.Connection;
 using System;
 using System.Collections.Concurrent;
 using System.Net;
@@ -11,7 +12,7 @@ namespace Shared.Protocol.TCP
     {
         private readonly static Random rand = new();
 
-        private readonly ConcurrentDictionary<string, ConnectionInfo> _mapConnection;
+        private readonly ConcurrentDictionary<string, Connection> _mapConnection;
         private readonly UdpTransport _udpTransport;
         private readonly TcpRetransmissionHandler _retransmissionHandler;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -19,7 +20,7 @@ namespace Shared.Protocol.TCP
 
         public TcpConnection(int port, int timeout)
         {
-            _mapConnection = new ConcurrentDictionary<string, ConnectionInfo>();
+            _mapConnection = new ConcurrentDictionary<string, Connection>();
             _udpTransport = new UdpTransport(port);
             
             _udpTransport.OnSegmentReceived += OnSegmentReceived;
@@ -35,7 +36,7 @@ namespace Shared.Protocol.TCP
         {
             Logger.Info($"Incoming Packet from IP:{ip}");
 
-            _mapConnection.TryGetValue(ip.ToString(), out ConnectionInfo? connectionInfo);
+            _mapConnection.TryGetValue(ip.ToString(), out Connection? connectionInfo);
             if (connectionInfo == null)
             {
                 connectionInfo = new(ip, _timeout);
@@ -51,7 +52,7 @@ namespace Shared.Protocol.TCP
             Logger.Info("Initiating connection to IP:" + ip);
 
             IPEndPoint endPoint = IPEndPoint.Parse(ip);
-            ConnectionInfo connectionInfo = new(endPoint, _timeout);
+            Connection connectionInfo = new(endPoint, _timeout);
             Segment segment = TCPSegmentBuilder.BuildSyn(connectionInfo);
 
             _mapConnection.TryAdd(endPoint.ToString(), connectionInfo);

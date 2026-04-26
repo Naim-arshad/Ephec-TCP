@@ -1,5 +1,5 @@
 ﻿using Shared.Logging;
-using Shared.Models;
+using Shared.Models.Connection;
 using System.Collections.Concurrent;
 
 namespace Shared.Protocol.TCP
@@ -13,7 +13,7 @@ namespace Shared.Protocol.TCP
         private const int MaxRetransmissions = 2;
 
         public async Task LoopRetransmissions(
-            ConcurrentDictionary<string, ConnectionInfo> mapConnection,
+            ConcurrentDictionary<string, Connection> mapConnection,
             CancellationToken cancellationToken)
         {
             if(mapConnection == null)

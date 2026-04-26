@@ -1,16 +1,16 @@
 using System;
 using System.Linq;
 using System.Net;
-using Shared.Models;
+using Shared.Models.Connection;
 using Xunit;
 
 namespace Shared.Models.Tests
 {
     public class ConnectionInfoTests
     {
-        private static ConnectionInfo CreateConnectionInfo(TimeSpan? timeout = null)
+        private static Connection.Connection CreateConnectionInfo(TimeSpan? timeout = null)
         {
-            return new ConnectionInfo(new IPEndPoint(IPAddress.Loopback, 5000), timeout ?? TimeSpan.FromSeconds(5));
+            return new Connection.Connection(new IPEndPoint(IPAddress.Loopback, 5000), timeout ?? TimeSpan.FromSeconds(5));
         }
 
         private static Segment CreateSegment(ushort sequence = 1, SegmentFlags.FlagOptions flags = SegmentFlags.FlagOptions.Syn)
@@ -21,7 +21,7 @@ namespace Shared.Models.Tests
         [Fact]
         public void Constructor_NullEndpoint_ThrowsArgumentNullException()
         {
-            Assert.Throws<ArgumentNullException>(() => new ConnectionInfo(null!, TimeSpan.FromSeconds(1)));
+            Assert.Throws<ArgumentNullException>(() => new Connection.Connection(null!, TimeSpan.FromSeconds(1)));
         }
 
         [Fact]
@@ -30,10 +30,10 @@ namespace Shared.Models.Tests
             var endpoint = new IPEndPoint(IPAddress.Loopback, 4040);
             var timeout = TimeSpan.FromSeconds(2);
 
-            var connectionInfo = new ConnectionInfo(endpoint, timeout);
+            var connectionInfo = new Connection.Connection(endpoint, timeout);
 
             Assert.Equal(endpoint, connectionInfo.Endpoint);
-            Assert.Equal(ConnectionInfo.State.Closed, connectionInfo.CurrentState);
+            Assert.Equal(Connection.State.Closed, connectionInfo.CurrentState);
             Assert.Equal(timeout, connectionInfo.Timeout);
             Assert.Null(connectionInfo.LastSegmentReceived);
             Assert.Null(connectionInfo.LastSegmentSent);
@@ -56,7 +56,7 @@ namespace Shared.Models.Tests
 
             connectionInfo.BeginConnection(sent);
 
-            Assert.Equal(ConnectionInfo.State.SynSent, connectionInfo.CurrentState);
+            Assert.Equal(Connection.State.SynSent, connectionInfo.CurrentState);
             Assert.Same(sent, connectionInfo.LastSegmentSent);
             Assert.Null(connectionInfo.LastSegmentReceived);
             Assert.Contains(sent, connectionInfo.GetSegmentsToRetransmit());
@@ -69,7 +69,7 @@ namespace Shared.Models.Tests
             var connectionInfo = CreateConnectionInfo();
 
             Assert.Throws<ArgumentException>(() =>
-                connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, null, false));
+                connectionInfo.UpdateConnectionInfo(Connection.Connection.State.Established, null, null, false));
         }
 
         [Fact]
@@ -80,9 +80,9 @@ namespace Shared.Models.Tests
             connectionInfo.BeginConnection(sent);
 
             var received = CreateSegment(sequence: 21, flags: SegmentFlags.FlagOptions.Ack);
-            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, received, null, false);
+            connectionInfo.UpdateConnectionInfo(Connection.Connection.State.Established, received, null, false);
 
-            Assert.Equal(ConnectionInfo.State.Established, connectionInfo.CurrentState);
+            Assert.Equal(Connection.State.Established, connectionInfo.CurrentState);
             Assert.Same(received, connectionInfo.LastSegmentReceived);
             Assert.Same(sent, connectionInfo.LastSegmentSent);
             Assert.Single(connectionInfo.GetSegmentsToRetransmit());
@@ -96,7 +96,7 @@ namespace Shared.Models.Tests
             connectionInfo.BeginConnection(first);
 
             var second = CreateSegment(sequence: 32, flags: SegmentFlags.FlagOptions.Ack);
-            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, second, true);
+            connectionInfo.UpdateConnectionInfo(Connection.Connection.State.Established, null, second, true);
 
             var pending = connectionInfo.GetSegmentsToRetransmit().ToArray();
 
@@ -116,7 +116,7 @@ namespace Shared.Models.Tests
             var duplicateSequence = CreateSegment(sequence: 40, flags: SegmentFlags.FlagOptions.Ack);
 
             Assert.Throws<ArgumentException>(() =>
-                connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, duplicateSequence, true));
+                connectionInfo.UpdateConnectionInfo(Connection.Connection.State.Established, null, duplicateSequence, true));
         }
 
         [Fact]
@@ -126,7 +126,7 @@ namespace Shared.Models.Tests
             var sent = new Segment(50, new SegmentFlags(SegmentFlags.FlagOptions.Syn), Array.Empty<byte>(), ackReceived: false);
             connectionInfo.BeginConnection(sent);
 
-            connectionInfo.MarkSegmentAsAcknowledged(50);
+            connectionInfo.MarkSegmentAsAcknowledged(sent);
 
             Assert.True(sent.AckReceived);
             Assert.Empty(connectionInfo.GetSegmentsToRetransmit());
@@ -139,7 +139,7 @@ namespace Shared.Models.Tests
             var sent = new Segment(60, new SegmentFlags(SegmentFlags.FlagOptions.Syn), Array.Empty<byte>(), ackReceived: false);
             connectionInfo.BeginConnection(sent);
 
-            connectionInfo.MarkSegmentAsAcknowledged(999);
+            connectionInfo.MarkSegmentAsAcknowledged(sent);
 
             Assert.False(sent.AckReceived);
             Assert.Single(connectionInfo.GetSegmentsToRetransmit());
@@ -201,7 +201,7 @@ namespace Shared.Models.Tests
             var first = CreateSegment(sequence: 90, flags: SegmentFlags.FlagOptions.Syn);
             var second = CreateSegment(sequence: 91, flags: SegmentFlags.FlagOptions.Ack);
             connectionInfo.BeginConnection(first);
-            connectionInfo.UpdateConnectionInfo(ConnectionInfo.State.Established, null, second, true);
+            connectionInfo.UpdateConnectionInfo(Connection.Connection.State.Established, null, second, true);
 
             var snapshot = connectionInfo.GetSegmentsToRetransmit().ToList();
             snapshot.Clear();
