@@ -4,24 +4,28 @@ using Shared.Logging;
 using Shared.Protocol.TCP;
 
 
-namespace Shared.Models.Connection
+namespace Shared.Models
 {
     public class Connection
     {
         public readonly IPEndPoint Endpoint;
 
+        private readonly TimeSpan Timeout;
         private readonly Lock _sync = new();
+        private readonly Dictionary<ushort, Segment> _mapSegmentToRetransmit;
+        private readonly SortedDictionary<ushort, Segment> _mapOrderedSegmentReceived;
+
+        private ushort _sequenceId;
+        private int _countDuplicateAckReceived;
+
+        public bool ActiveRetransmission { get; private set; }
+        public long LastActivity { get; private set; }
+        
 
         public Segment? LastSegmentReceived { get; private set; }
         public Segment? LastSegmentSent { get; private set; }
-        private int _lastSegmentAckReceivedDuplicateCount;
-        public bool ActiveRetransmission { get; private set; }
-        public long LastActivity {  get; private set; }
-        private ushort _sequencerId;
-        private ushort _nextExpectedSequenceNumber;
-        public TimeSpan Timeout { get; private set; }
-        private readonly Dictionary<ushort, Segment> _mapSegmentToRetransmit;
-        private readonly SortedDictionary<ushort, Segment> _mapOrderedSegmentReceived;
+        
+        
 
         public State CurrentState { get; private set; }
         public enum State
@@ -38,28 +42,18 @@ namespace Shared.Models.Connection
             TimeOut
         }
 
-        public Connection(IPEndPoint endpoint, TimeSpan timout)
+        public Connection(IPEndPoint endpoint, TimeSpan timeout)
         {
-            ArgumentNullException.ThrowIfNull(endpoint);
-
             Endpoint = endpoint;
             CurrentState = State.Closed;
             _mapSegmentToRetransmit = [];
             _mapOrderedSegmentReceived = [];
-            Timeout = timout;
-            _sequencerId = TcpConnection.RandomSequenceNumber(0);
-            _lastSegmentAckReceivedDuplicateCount = 0;
+            Timeout = timeout;
+            _sequenceId = TcpConnection.RandomSequenceNumber(0);
+            _countDuplicateAckReceived = 0;
             ActiveRetransmission = false;
         }
-        public void BeginConnection(Segment segmentSent)
-        {
-            ArgumentNullException.ThrowIfNull(segmentSent);
 
-            lock (_sync)
-            {
-                UpdateConnectionInfo(State.SynSent, null, segmentSent, true);
-            }
-        }
         public void UpdateConnectionInfo(State newState, Segment? lastSegmentReceived, Segment? lastSegmentSent, bool toBeAck)
         {
             if (lastSegmentReceived == null && lastSegmentSent == null)
@@ -77,11 +71,15 @@ namespace Shared.Models.Connection
                 {
                     Logger.Debug($"Adding segment with sequence number {lastSegmentSent.SequenceNumber} and flag {lastSegmentSent.Flags.Value} to retransmission map.");
                     _mapSegmentToRetransmit.Add(lastSegmentSent.SequenceNumber, lastSegmentSent);
+                } 
+                if (lastSegmentReceived != null && !_mapOrderedSegmentReceived.ContainsKey(lastSegmentReceived.SequenceNumber))
+                {
+                    Logger.Debug($"Received segment with sequence number {lastSegmentReceived.SequenceNumber} and flag {lastSegmentReceived.Flags.Value}.");
+                    _mapOrderedSegmentReceived.Add(lastSegmentReceived.SequenceNumber, lastSegmentReceived);
                 }
-                    
             }
         }
-        public bool MarkSegmentAsAcknowledged(Segment segment)
+        public void RemoveSegmentToRetransmit(Segment segment)
         {
             lock (_sync)
             {
@@ -90,15 +88,22 @@ namespace Shared.Models.Connection
                     if (_mapSegmentToRetransmit.TryGetValue(segment.GetDataToSequence(), out var segmentSaved))
                     {
                         Logger.Debug($"Acknowledging segment with sequence number {segment.GetDataToSequence()}.");
-                        segmentSaved.AckReceived = true;
-                        return _mapSegmentToRetransmit.Remove(segment.GetDataToSequence());
+                        _mapSegmentToRetransmit.Remove(segment.GetDataToSequence());
                     } else if(LastSegmentReceived != null && segment.GetDataToSequence() == LastSegmentReceived.GetDataToSequence())
                     {
                         Logger.Warning($"Received ACK for segment with sequence number {segment.GetDataToSequence()} which is not in the retransmission map but matches the last segment sent.");
-                        //_lastSegmentAckReceivedCount++;
+                        _countDuplicateAckReceived++;
+
+                        if(_countDuplicateAckReceived >= 3)
+                        {
+                            Logger.Warning($"Duplicate ACK received {_countDuplicateAckReceived} times for segment with sequence number {segment.GetDataToSequence()}. Activating retransmission.");
+                            ActiveRetransmission = true;
+                        }
                     }
+                } else
+                {
+                    Logger.Warning($"Received ACK for segment with sequence number {segment.GetDataToSequence()} which does not match the expected sequence number {LastSegmentReceived?.SequenceNumber + 1}.");
                 }
-                return false;
             }
         }
         public bool IsExpired()
@@ -122,8 +127,8 @@ namespace Shared.Models.Connection
         {
             lock (_sync)
             {
-                ushort currentSequence = _sequencerId;
-                _sequencerId++;
+                ushort currentSequence = _sequenceId;
+                _sequenceId++;
                 return currentSequence;
             }
         }

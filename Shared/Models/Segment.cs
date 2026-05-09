@@ -10,25 +10,9 @@ namespace Shared.Models
         public SegmentFlags Flags { get; private set; }
         public byte[] Data { get; private set; }
         public int RetransmissionCount { get; private set; }
-        public bool AckReceived { get; set; }
-
 
         // Constructor
         // ushort a pour seul valeur possible 16 bits non signé (0 à 65535)
-        public Segment(ushort sequence, SegmentFlags flags, byte[] data, bool ackReceived)
-        {
-            ArgumentNullException.ThrowIfNull(data);
-
-            if (data.Length > 65535)
-                throw new ArgumentException("La longueur de data dépasse la taille maximal de 16 bits (65535)\n" +
-                    "data Length : " + data.Length);
-            SequenceNumber = sequence;
-            Flags = flags;
-            Data = [.. data]; //Une copie pour empecher les modifications externes si la référence est conservée de data
-            RetransmissionCount = 0;
-            AckReceived = ackReceived;
-        }
-
         public Segment(ushort sequence, SegmentFlags flags, byte[] data)
         {
             ArgumentNullException.ThrowIfNull(data);
@@ -40,7 +24,6 @@ namespace Shared.Models
             Flags = flags;
             Data = [.. data]; //Une copie pour empecher les modifications externes si la référence est conservée de data
             RetransmissionCount = 0;
-            AckReceived = true;
         }
 
         public byte[] Serialize()

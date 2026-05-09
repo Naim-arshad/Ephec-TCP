@@ -1,5 +1,5 @@
 ﻿using Shared.Logging;
-using Shared.Models.Connection;
+using Shared.Models;
 using System.Collections.Concurrent;
 
 namespace Shared.Protocol.TCP

@@ -1,6 +1,5 @@
 ﻿using Shared.Logging;
 using Shared.Models;
-using Shared.Models.Connection;
 using System.Collections.Concurrent;
 
 namespace Shared.Protocol.TCP
@@ -85,7 +84,7 @@ namespace Shared.Protocol.TCP
                 } else
                 {
                     segmentToSend = TCPSegmentBuilder.BuildAck(segment, connectionInfo);
-                    connectionInfo.MarkSegmentAsAcknowledged(segment);
+                    connectionInfo.RemoveSegmentToRetransmit(segment);
                     connectionInfo.UpdateConnectionInfo(Connection.State.Established, segment, segmentToSend, false);
                     Logger.Info($"Connection established with {connectionInfo.Endpoint}");
                 }
@@ -96,9 +95,10 @@ namespace Shared.Protocol.TCP
         private static byte[] HandleAck(Segment segment, Connection connectionInfo,
             ConcurrentDictionary<string, Connection> mapConnection)
         {
+            //TODO update the code
             Logger.Debug($"Handling ACK segment: {segment}");
             
-            if(connectionInfo.MarkSegmentAsAcknowledged(segment))
+            if(connectionInfo.RemoveSegmentToRetransmit(segment))
             {
                 if (connectionInfo.LastSegmentSent?.Flags.Value == (byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack))
                 {

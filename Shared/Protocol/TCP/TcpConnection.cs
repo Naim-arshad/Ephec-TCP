@@ -1,6 +1,5 @@
 ﻿using Shared.Logging;
 using Shared.Models;
-using Shared.Models.Connection;
 using System;
 using System.Collections.Concurrent;
 using System.Net;

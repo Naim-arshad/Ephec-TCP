@@ -1,6 +1,4 @@
 ﻿using Shared.Models;
-using Shared.Models.Connection;
-
 
 namespace Shared.Protocol.TCP
 {
