@@ -9,7 +9,6 @@ namespace Shared.Models
         public ushort SequenceNumber { get; private set; }
         public SegmentFlags Flags { get; private set; }
         public byte[] Data { get; private set; }
-        public int RetransmissionCount { get; private set; }
 
         // Constructor
         // ushort a pour seul valeur possible 16 bits non signé (0 à 65535)
@@ -23,7 +22,6 @@ namespace Shared.Models
             SequenceNumber = sequence;
             Flags = flags;
             Data = [.. data]; //Une copie pour empecher les modifications externes si la référence est conservée de data
-            RetransmissionCount = 0;
         }
 
         public byte[] Serialize()
@@ -81,11 +79,6 @@ namespace Shared.Models
                 throw new InvalidOperationException("Data doit contenir exactement 2 octets pour représenter une séquence.");
 
             return BinaryPrimitives.ReadUInt16BigEndian(Data.AsSpan(0, 2));
-        }
-
-        public void IncrementRetransmissionCount()
-        {
-            RetransmissionCount++;
         }
 
         public static string BytesToHexString(byte[] bytes)

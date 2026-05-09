@@ -48,6 +48,7 @@ namespace Shared.Protocol.TCP
 
         public async Task InitiatConnection(string ip)
         {
+            //TODO implémenter la logie d'initiation de connection TCP (handshake, etc.)
             Logger.Info("Initiating connection to IP:" + ip);
 
             IPEndPoint endPoint = IPEndPoint.Parse(ip);

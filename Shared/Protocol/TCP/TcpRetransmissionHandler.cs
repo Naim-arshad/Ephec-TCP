@@ -30,42 +30,43 @@ namespace Shared.Protocol.TCP
 
                     foreach (var connection in mapConnection)
                     {
-                        foreach (var segment in connection.Value.GetSegmentsToRetransmit())
+                        if(connection.Value.SendBuffer.ActiveRetransmission)
                         {
-                            if (segment.RetransmissionCount < MaxRetransmissions && connection.Value.ActiveRetransmission)
+                            foreach (var segment in connection.Value.GetSegmentsToRetransmit())
                             {
-                                _ = Task.Run(async () =>
+                                if (segment.RetransmissionCount < MaxRetransmissions && connection.Value.ActiveRetransmission)
                                 {
-                                    try
+                                    _ = Task.Run(async () =>
                                     {
-                                        Logger.Debug($"Retransmitting segment with sequence number {segment.SequenceNumber} " +
-                                            $"to {connection.Value.Endpoint}. Retransmission count: {segment.RetransmissionCount + 1}");
-                                        await _semaphore.WaitAsync(cancellationToken);
-                                        await _udpTransport.SendSegmentAsync(segment.Serialize(), connection.Value.Endpoint);
-                                        segment.IncrementRetransmissionCount();
-                                    }
-                                    catch (Exception ex) //TODO: Consider catching more specific exceptions if needed (e.g., IOException for network errors).
-                                    {
-                                        // Log the exception or handle it as needed.
-                                        Console.WriteLine($"Error retransmitting segment with sequence number " +
-                                            $"{segment.SequenceNumber} to {connection.Value.Endpoint}: {ex.Message}");
-                                    }
-                                    finally
-                                    {
-                                        _semaphore.Release();
-                                    }
-                                });
-                            }
-                            else
-                            {
-                                //TODO: Implement logic for handling max retransmissions reached (e.g., close connection, log error, etc.)
-                                Console.WriteLine($"Max retransmissions reached for segment with sequence number " +
-                                    $"{segment.SequenceNumber} to {connection.Value.Endpoint}. Closing connection.");
-                                mapConnection.TryRemove(connection.Key, out _);
-                                break; // Exit the loop for this connection since it's being removed.
+                                        try
+                                        {
+                                            Logger.Debug($"Retransmitting segment with sequence number {segment.SequenceNumber} " +
+                                                $"to {connection.Value.Endpoint}. Retransmission count: {segment.RetransmissionCount + 1}");
+                                            await _semaphore.WaitAsync(cancellationToken);
+                                            await _udpTransport.SendSegmentAsync(segment.Serialize(), connection.Value.Endpoint);
+                                        }
+                                        catch (Exception ex) //TODO: Consider catching more specific exceptions if needed (e.g., IOException for network errors).
+                                        {
+                                            // Log the exception or handle it as needed.
+                                            Console.WriteLine($"Error retransmitting segment with sequence number " +
+                                                $"{segment.SequenceNumber} to {connection.Value.Endpoint}: {ex.Message}");
+                                        }
+                                        finally
+                                        {
+                                            _semaphore.Release();
+                                        }
+                                    });
+                                }
+                                else
+                                {
+                                    //TODO: Implement logic for handling max retransmissions reached (e.g., close connection, log error, etc.)
+                                    Console.WriteLine($"Max retransmissions reached for segment with sequence number " +
+                                        $"{segment.SequenceNumber} to {connection.Value.Endpoint}. Closing connection.");
+                                    mapConnection.TryRemove(connection.Key, out _);
+                                    break; // Exit the loop for this connection since it's being removed.
+                                }
                             }
                         }
-
                         //TODO désactivé la retransmission active après un certain nombre de retransmissions ou après un certain temps d'inactivité pour éviter les boucles infinies de retransmissions.
                     }
                 }

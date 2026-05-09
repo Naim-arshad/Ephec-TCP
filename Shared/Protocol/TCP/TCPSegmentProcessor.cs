@@ -26,6 +26,9 @@ namespace Shared.Protocol.TCP
                     Logger.Debug($"Received Rst segment from {connectionInfo.Endpoint}. Handling Rst segment.");
                     //TODO HandleRst(segment, connectionInfo, mapConnection);
                     break;
+                case (byte)SegmentFlags.FlagOptions.None:
+                    Logger.Debug($"Received segment with no flags from {connectionInfo.Endpoint}. No action taken.");
+                    break;
                 default:
                     Logger.Error($"{segment.Flags.Value} : Type de segment non géré");
                     //TODO throw new Exception("Type de segment non géré");
