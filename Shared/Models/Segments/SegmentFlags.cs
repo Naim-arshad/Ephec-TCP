@@ -1,8 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using Shared.Logging;
 
-namespace Shared.Models
+namespace Shared.Models.Segments
 {
     public record SegmentFlags
     {

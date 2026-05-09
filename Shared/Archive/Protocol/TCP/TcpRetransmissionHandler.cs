@@ -10,7 +10,6 @@ namespace Shared.Protocol.TCP
         private readonly UdpTransport _udpTransport = udpTransport;
         private readonly SemaphoreSlim _semaphore = new(5);
         private const int RetransmissionTimeout = 5000; // in milliseconds
-        private const int MaxRetransmissions = 2;
 
         public async Task LoopRetransmissions(
             ConcurrentDictionary<string, Connection> mapConnection,
