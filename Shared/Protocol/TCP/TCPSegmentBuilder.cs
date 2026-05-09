@@ -1,4 +1,7 @@
 ﻿using Shared.Models;
+using Shared.Models.Segments;
+using Shared.Protocol.Serialization;
+
 
 namespace Shared.Protocol.TCP
 {
@@ -17,7 +20,7 @@ namespace Shared.Protocol.TCP
             return new Segment(
                 sequence: connection.GetNextSequenceNumber(),
                 flags: new ((byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack)),
-                data: segment.GetSequenceToBytes()
+                data: SegmentSerializer.SerializeSequenceNumber(segment)
                 );
         }
         public static Segment BuildRst(Segment segmentReceived, Connection connection)
@@ -25,7 +28,7 @@ namespace Shared.Protocol.TCP
             return new Segment(
                 sequence: connection.GetNextSequenceNumber(),
                 flags: new ((byte)SegmentFlags.FlagOptions.Rst),
-                data: segmentReceived.GetSequenceToBytes()
+                data: []
                 );
         }
         public static Segment BuildAck(Segment segmentReceived, Connection connection)
@@ -33,7 +36,7 @@ namespace Shared.Protocol.TCP
             return new Segment(
                 sequence: connection.GetNextSequenceNumber(),
                 flags: new ((byte)SegmentFlags.FlagOptions.Ack),
-                data: segmentReceived.GetSequenceToBytes()
+                data: SegmentSerializer.SerializeSequenceNumber(segmentReceived)
                 );
         }
     }

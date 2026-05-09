@@ -1,6 +1,8 @@
 ﻿using Shared.Logging;
 using Shared.Models;
-using System;
+using Shared.Models.Segments;
+using Shared.Protocol.Serialization;
+using Shared.Protocol.UDP;
 using System.Collections.Concurrent;
 using System.Net;
 
@@ -23,32 +25,43 @@ namespace Shared.Protocol.TCP
             _udpTransport = new UdpTransport(port);
             
             _udpTransport.OnSegmentReceived += OnSegmentReceived;
+            _timeout = TimeSpan.FromSeconds(timeout);
             _udpTransport.StartServer();
 
             _retransmissionHandler = new TcpRetransmissionHandler(_udpTransport);
             _ = _retransmissionHandler.LoopRetransmissions(_mapConnection, _cancellationTokenSource.Token);
-
-            _timeout = TimeSpan.FromSeconds(timeout);
         }
 
         public void OnSegmentReceived(byte[] PacketBinary, IPEndPoint ip)
         {
+            Segment segment;
+            byte[] packet;
             Logger.Info($"Incoming Packet from IP:{ip}");
 
-            _mapConnection.TryGetValue(ip.ToString(), out Connection? connectionInfo);
-            if (connectionInfo == null)
+            try
             {
-                connectionInfo = new(ip, _timeout);
-                _mapConnection[ip.ToString()] = connectionInfo;
+                segment = SegmentParser.Deserialize(PacketBinary);
+
+                _mapConnection.TryGetValue(ip.ToString(), out Connection? connectionInfo);
+                if (connectionInfo == null)
+                {
+                    connectionInfo = new(ip, _timeout);
+                    _mapConnection[ip.ToString()] = connectionInfo;
+                }
+
+                packet = TCPSegmentProcessor.Process(segment, connectionInfo, _mapConnection);
+
+            } catch (Exception ex)
+            {
+                Logger.Error("Error processing segment: " + ex.Message);
+                return;
             }
-            byte[] packet = TCPSegmentProcessor.Process(Segment.Deserialize(PacketBinary), connectionInfo, _mapConnection);
             if(packet != null && packet.Length >= 5)
                 _ = _udpTransport.SendSegmentAsync(packet, ip);
         }
 
         public async Task InitiatConnection(string ip)
         {
-            //TODO implémenter la logie d'initiation de connection TCP (handshake, etc.)
             Logger.Info("Initiating connection to IP:" + ip);
 
             IPEndPoint endPoint = IPEndPoint.Parse(ip);
@@ -56,10 +69,10 @@ namespace Shared.Protocol.TCP
             Segment segment = TCPSegmentBuilder.BuildSyn(connectionInfo);
 
             _mapConnection.TryAdd(endPoint.ToString(), connectionInfo);
-            connectionInfo.BeginConnection(segment);
+            connectionInfo.UpdateConnectionInfo(Connection.State.SynSent, null, segment);
 
             _ = _udpTransport.SendSegmentAsync(
-                segment.Serialize(), 
+                SegmentSerializer.Serialize(segment), 
                 endPoint);
         }
 

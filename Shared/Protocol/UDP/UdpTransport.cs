@@ -1,7 +1,7 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 
-namespace Shared.Archive.Protocol
+namespace Shared.Protocol.UDP
 {
     public class UdpTransport : IAsyncDisposable
     {

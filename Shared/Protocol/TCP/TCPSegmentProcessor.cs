@@ -1,5 +1,7 @@
 ﻿using Shared.Logging;
 using Shared.Models;
+using Shared.Models.Segments;
+using Shared.Protocol.Serialization; 
 using System.Collections.Concurrent;
 
 namespace Shared.Protocol.TCP
@@ -14,10 +16,10 @@ namespace Shared.Protocol.TCP
             switch (segment.Flags.Value)
             {
                 case (byte)SegmentFlags.FlagOptions.Syn:
-                    byteToSend = HandleSyn(segment, connectionInfo, mapConnection).Serialize();
+                    byteToSend = SegmentSerializer.Serialize(HandleSyn(segment, connectionInfo, mapConnection));
                     break;
                 case ((byte)SegmentFlags.FlagOptions.Syn | (byte)SegmentFlags.FlagOptions.Ack):
-                    byteToSend = HandleSynAck(segment, connectionInfo, mapConnection).Serialize();
+                    byteToSend = SegmentSerializer.Serialize(HandleSynAck(segment, connectionInfo, mapConnection));
                     break;
                 case (byte)SegmentFlags.FlagOptions.Ack:
                     byteToSend = HandleAck(segment, connectionInfo, mapConnection);
@@ -52,7 +54,7 @@ namespace Shared.Protocol.TCP
             else
             {
                 segmentToSend = TCPSegmentBuilder.BuildSynAck(connectionInfo, segment);
-                connectionInfo.UpdateConnectionInfo(Connection.State.SynReceived, segment, segmentToSend, true);
+                connectionInfo.UpdateConnectionInfo(Connection.State.SynReceived, segment, segmentToSend);
             }
             Logger.Debug($"Segment responded with {segmentToSend.SequenceNumber}");
             return segmentToSend;
@@ -79,16 +81,27 @@ namespace Shared.Protocol.TCP
                 }
                     
 
-                if(!connectionInfo.CheckSequenceNumber(segment.GetDataToSequence()))
+                if(!connectionInfo.CheckSequenceNumber(SegmentPayloadReader.ReadAckSequence(segment)))
                 {
-                    Logger.Error($"Received SYN-ACK segment with invalid sequence number. Expected: {connectionInfo.LastSegmentSent.SequenceNumber}, Received: {segment.GetDataToSequence()}. Sending RST.");
+                    Logger.Error($"Received SYN-ACK segment with invalid sequence number. Expected: {connectionInfo.LastSegmentSent.SequenceNumber+1}, Received: {SegmentPayloadReader.ReadAckSequence(segment)}. Sending RST.");
                     segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo);
                     mapConnection.TryRemove(connectionInfo.Endpoint.ToString(), out _);
                 } else
                 {
                     segmentToSend = TCPSegmentBuilder.BuildAck(segment, connectionInfo);
-                    connectionInfo.RemoveSegmentToRetransmit(segment);
-                    connectionInfo.UpdateConnectionInfo(Connection.State.Established, segment, segmentToSend, false);
+                    if (connectionInfo.SendBuffer.Acknowledge(segment, connectionInfo))
+                    {
+                        Logger.Debug($"Received ACK segment with valid sequence number. Connection established with {connectionInfo.Endpoint}");
+                        connectionInfo.UpdateConnectionInfo(Connection.State.Established, segment, segmentToSend);
+                    }
+                    else
+                    {
+                        Logger.Error($"Failed to acknowledge SYN-ACK segment. Expected: {connectionInfo.LastSegmentSent.SequenceNumber}, Received: {SegmentPayloadReader.ReadAckSequence(segment)}. Sending RST.");
+                        segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo);
+                        mapConnection.TryRemove(connectionInfo.Endpoint.ToString(), out _);
+                        return segmentToSend;
+                    }
+                        
                     Logger.Info($"Connection established with {connectionInfo.Endpoint}");
                 }
             }
@@ -100,20 +113,23 @@ namespace Shared.Protocol.TCP
         {
             //TODO update the code
             Logger.Debug($"Handling ACK segment: {segment}");
+            ushort acknowledgedSequenceNumber = SegmentPayloadReader.ReadAckSequence(segment);
             
-            if(connectionInfo.RemoveSegmentToRetransmit(segment))
+            if(connectionInfo.SendBuffer.Acknowledge(segment, connectionInfo))
             {
                 if (connectionInfo.LastSegmentSent?.Flags.Value == (byte)(SegmentFlags.FlagOptions.Syn | SegmentFlags.FlagOptions.Ack))
                 {
+                    connectionInfo.UpdateConnectionInfo(Connection.State.Established, segment, null);
                     Logger.Debug($"Connection established with IP : {connectionInfo.Endpoint}");
                     return [];
                 }
             } else
             {
-                Logger.Error($"Received ACK segment with invalid sequence number. Expected: {connectionInfo.LastSegmentSent?.SequenceNumber}, Received: {segment.GetDataToSequence()}. Sending RST.");
-                var segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo);
-                mapConnection.TryRemove(connectionInfo.Endpoint.ToString(), out _);
-                return segmentToSend.Serialize();
+                if (connectionInfo.LastAcknowledgedSequenceId == acknowledgedSequenceNumber)
+                    return [];
+
+                Logger.Warning($"Received ACK segment with invalid sequence number. Expected: {connectionInfo.LastSegmentSent.SequenceNumber}, Received: {acknowledgedSequenceNumber}.");
+                return SegmentSerializer.Serialize(connectionInfo.LastSegmentSent);
             }
             return [];
         }

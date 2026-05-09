@@ -1,5 +1,7 @@
 ﻿using Shared.Logging;
 using Shared.Models;
+using Shared.Protocol.Serialization;
+using Shared.Protocol.UDP;
 using System.Collections.Concurrent;
 
 namespace Shared.Protocol.TCP
@@ -10,11 +12,12 @@ namespace Shared.Protocol.TCP
         private readonly UdpTransport _udpTransport = udpTransport;
         private readonly SemaphoreSlim _semaphore = new(5);
         private const int RetransmissionTimeout = 5000; // in milliseconds
+        private const int MaxRetransmissions = 5; // Maximum number of retransmissions before giving up on a segment.
 
         public async Task LoopRetransmissions(
             ConcurrentDictionary<string, Connection> mapConnection,
             CancellationToken cancellationToken)
-        {
+        { 
             if(mapConnection == null)
             {
 
@@ -29,36 +32,40 @@ namespace Shared.Protocol.TCP
 
                     foreach (var connection in mapConnection)
                     {
-                        if(connection.Value.SendBuffer.ActiveRetransmission)
+                        if(connection.Value.ActiveRetransmission)
                         {
                             foreach (var segment in connection.Value.GetSegmentsToRetransmit())
                             {
-                                if (segment.RetransmissionCount < MaxRetransmissions && connection.Value.ActiveRetransmission)
+                                if (connection.Value.RetransmissionCount < MaxRetransmissions && connection.Value.ActiveRetransmission)
                                 {
-                                    _ = Task.Run(async () =>
+                                    bool semaphoreAcquired = false;
+                                    try
                                     {
-                                        try
-                                        {
-                                            Logger.Debug($"Retransmitting segment with sequence number {segment.SequenceNumber} " +
-                                                $"to {connection.Value.Endpoint}. Retransmission count: {segment.RetransmissionCount + 1}");
-                                            await _semaphore.WaitAsync(cancellationToken);
-                                            await _udpTransport.SendSegmentAsync(segment.Serialize(), connection.Value.Endpoint);
-                                        }
-                                        catch (Exception ex) //TODO: Consider catching more specific exceptions if needed (e.g., IOException for network errors).
-                                        {
-                                            // Log the exception or handle it as needed.
-                                            Console.WriteLine($"Error retransmitting segment with sequence number " +
-                                                $"{segment.SequenceNumber} to {connection.Value.Endpoint}: {ex.Message}");
-                                        }
-                                        finally
-                                        {
+                                        Logger.Debug($"Retransmitting segment with sequence number {segment.SequenceNumber} " +
+                                            $"to {connection.Value.Endpoint}. Retransmission count: {connection.Value.RetransmissionCount + 1}");
+                                        await _semaphore.WaitAsync(cancellationToken);
+                                        semaphoreAcquired = true;
+                                        await _udpTransport.SendSegmentAsync(SegmentSerializer.Serialize(segment), connection.Value.Endpoint);
+                                        connection.Value.IncrementRetransmissionCount();
+                                    }
+                                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                                    {
+                                        throw;
+                                    }
+                                    catch (Exception ex) //TODO: Consider catching more specific exceptions if needed (e.g., IOException for network errors).
+                                    {
+                                        // Log the exception or handle it as needed.
+                                        Console.WriteLine($"Error retransmitting segment with sequence number " +
+                                            $"{segment.SequenceNumber} to {connection.Value.Endpoint}: {ex.Message}");
+                                    }
+                                    finally
+                                    {
+                                        if (semaphoreAcquired)
                                             _semaphore.Release();
-                                        }
-                                    });
+                                    }
                                 }
                                 else
                                 {
-                                    //TODO: Implement logic for handling max retransmissions reached (e.g., close connection, log error, etc.)
                                     Console.WriteLine($"Max retransmissions reached for segment with sequence number " +
                                         $"{segment.SequenceNumber} to {connection.Value.Endpoint}. Closing connection.");
                                     mapConnection.TryRemove(connection.Key, out _);
@@ -74,6 +81,6 @@ namespace Shared.Protocol.TCP
             {
                 // Expected when cancellation is requested, no action needed.
             }
-        }
+        } 
     }
 }

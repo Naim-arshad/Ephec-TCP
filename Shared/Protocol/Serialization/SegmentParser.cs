@@ -47,7 +47,7 @@ namespace Shared.Protocol.Serialization
             return segment;
         }
 
-        public static string BytesToHexString(byte[] bytes)
+        private static string BytesToHexString(byte[] bytes)
         {
             return string.Join(" ", bytes.Select(b => b.ToString("X2")));
         }

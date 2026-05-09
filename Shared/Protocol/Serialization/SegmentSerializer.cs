@@ -39,5 +39,12 @@ namespace Shared.Protocol.Serialization
 
             return packet;
         }
+
+        public static byte[] SerializeSequenceNumber(Segment segment)
+        {
+            Span<byte> sequenceBuffer = stackalloc byte[2];
+            BinaryPrimitives.WriteUInt16BigEndian(sequenceBuffer, segment.SequenceNumber);
+            return sequenceBuffer.ToArray();
+        }
     }
 }
