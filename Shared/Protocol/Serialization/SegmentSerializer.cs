@@ -1,4 +1,5 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
+using Shared.Logging;
 using Shared.Models.Segments;
 
 namespace Shared.Protocol.Serialization
@@ -7,26 +8,36 @@ namespace Shared.Protocol.Serialization
     {
         public static byte[] Serialize(Segment segment)
         {
-            // Le paquet est composé de :
-            // 0-1 : longueur des données (16 bits)
-            // 2-3 : numéro de séquence (16 bits)
+            ArgumentNullException.ThrowIfNull(segment);
+            byte[] data = segment.Data;
+
+            // Le paquet est compose de :
+            // 0-1 : longueur des donnees (16 bits)
+            // 2-3 : numero de sequence (16 bits)
             // 4 : flags (8 bits)
-            // 5-n : données
-            int packetLength = 5 + segment.Data.Length;
+            // 5-n : donnees
+            int packetLength = 5 + data.Length;
             using var stream = new MemoryStream(packetLength);
 
             Span<byte> dataSizeBuffer = stackalloc byte[2];
-            BinaryPrimitives.WriteUInt16BigEndian(dataSizeBuffer, (ushort)segment.Data.Length);
+            BinaryPrimitives.WriteUInt16BigEndian(dataSizeBuffer, (ushort)data.Length);
             stream.Write(dataSizeBuffer);
 
-            stream.Write(segment.GetSequenceToBytes());
+            Span<byte> sequenceBuffer = stackalloc byte[2];
+            BinaryPrimitives.WriteUInt16BigEndian(sequenceBuffer, segment.SequenceNumber);
+            stream.Write(sequenceBuffer);
 
             Span<byte> flagsBuffer = [segment.Flags.Value];
             stream.Write(flagsBuffer);
 
-            stream.Write(segment.Data, 0, segment.Data.Length);
+            stream.Write(data, 0, data.Length);
 
-            return stream.ToArray();
+            byte[] packet = stream.ToArray();
+            Logger.Debug(
+                $"Packet serialized: sequence={segment.SequenceNumber}, flags=0x{segment.Flags.Value:X2}, " +
+                $"payloadLength={data.Length}, packetLength={packet.Length}.");
+
+            return packet;
         }
     }
 }

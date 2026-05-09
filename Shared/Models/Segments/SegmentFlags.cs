@@ -1,11 +1,9 @@
-﻿using Shared.Logging;
-
 namespace Shared.Models.Segments
 {
     public record SegmentFlags
     {
-        public byte Value { get; private set; }
-        
+        public byte Value { get; }
+
         [Flags]
         public enum FlagOptions : byte
         {
@@ -18,24 +16,35 @@ namespace Shared.Models.Segments
 
         public SegmentFlags(FlagOptions options)
         {
-            if (!AreFlagsValid(options))
-                throw new InvalidOperationException($"Combinaison de flags invalide : {options}");
-            this.Value = (byte)options;
+            EnsureFlagsAreValid(options);
+            Value = (byte)options;
         }
+
         public SegmentFlags(byte value)
         {
             FlagOptions options = (FlagOptions)value;
-            if (!AreFlagsValid(options))
-                throw new InvalidOperationException($"Combinaison de flags invalide : {options}");
-            this.Value = value;
+            EnsureFlagsAreValid(options);
+            Value = value;
+        }
+
+        private static void EnsureFlagsAreValid(FlagOptions options)
+        {
+            if (AreFlagsValid(options))
+                return;
+
+            throw new InvalidOperationException($"Combinaison de flags invalide : {options}");
         }
 
         private static bool AreFlagsValid(FlagOptions options)
         {
+            const FlagOptions AllKnownFlags = FlagOptions.Syn | FlagOptions.Ack | FlagOptions.Fin | FlagOptions.Rst;
             const FlagOptions SynFinRstMask = FlagOptions.Syn | FlagOptions.Fin | FlagOptions.Rst; // Masque pour SYN, FIN et RST : 0000 1101
             const FlagOptions AckRstMask = FlagOptions.Ack | FlagOptions.Rst; // Masque pour ACK et RST : 0000 1010
 
-            // 1) Vérifie qu'il n'y a pas plus d'un flag parmi SYN / FIN / RST
+            if (((byte)options & ~(byte)AllKnownFlags) != 0)
+                return false;
+
+            // 1) Verifie qu'il n'y a pas plus d'un flag parmi SYN / FIN / RST
             var activeMaskFlags = (byte)(options & SynFinRstMask);
 
             if (System.Numerics.BitOperations.PopCount(activeMaskFlags) > 1)
@@ -47,9 +56,15 @@ namespace Shared.Models.Segments
 
             return true;
         }
+
         public static bool IsFlagSet(byte value, FlagOptions flag)
         {
             return (value & (byte)flag) == (byte)flag;
+        }
+
+        public override string ToString()
+        {
+            return $"{(FlagOptions)Value} (0x{Value:X2})";
         }
     }
 }

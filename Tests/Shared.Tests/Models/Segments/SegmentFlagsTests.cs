@@ -29,6 +29,8 @@ public class SegmentFlagsTests
             FlagOptions.Ack | FlagOptions.Rst,
             FlagOptions.Syn | FlagOptions.Ack | FlagOptions.Rst,
             FlagOptions.Fin | FlagOptions.Ack | FlagOptions.Rst,
+            (FlagOptions)0b0001_0000,
+            (FlagOptions)0b1111_1111,
         };
 
     [Theory]
