@@ -17,6 +17,17 @@ public class TcpReceiveBufferTests
         buffer.LastSegmentReceived.SequenceNumber.Should().Be(0);
         buffer.LastSegmentReceived.Flags.Value.Should().Be((byte)FlagOptions.None);
         buffer.LastSegmentReceived.Data.Should().BeEmpty();
+        buffer.LastOrderedSequenceNumber.Should().Be(0);
+        buffer.LastConsumedSequenceNumber.Should().Be(0);
+    }
+
+    [Fact]
+    public void Constructor_WithLastOrderedSequenceNumber_InitializesLastOrderedSequenceNumber()
+    {
+        var buffer = new TcpReceiveBuffer(10);
+
+        buffer.LastOrderedSequenceNumber.Should().Be(10);
+        buffer.LastConsumedSequenceNumber.Should().Be(10);
     }
 
     [Fact]
@@ -64,6 +75,55 @@ public class TcpReceiveBufferTests
     }
 
     [Fact]
+    public void AddSegment_WithContiguousSegments_UpdatesLastOrderedSequenceNumber()
+    {
+        var buffer = new TcpReceiveBuffer(10);
+
+        buffer.AddSegment(CreateSegment(11));
+        buffer.AddSegment(CreateSegment(12));
+        buffer.AddSegment(CreateSegment(13));
+
+        buffer.LastOrderedSequenceNumber.Should().Be(13);
+    }
+
+    [Fact]
+    public void AddSegment_WithGap_KeepsLastOrderedSequenceNumberBeforeGap()
+    {
+        var buffer = new TcpReceiveBuffer(10);
+
+        buffer.AddSegment(CreateSegment(11));
+        buffer.AddSegment(CreateSegment(13));
+
+        buffer.LastOrderedSequenceNumber.Should().Be(11);
+    }
+
+    [Fact]
+    public void AddSegment_WhenMissingSegmentArrives_AdvancesLastOrderedSequenceNumberAcrossBufferedSegments()
+    {
+        var buffer = new TcpReceiveBuffer(10);
+
+        buffer.AddSegment(CreateSegment(11));
+        buffer.AddSegment(CreateSegment(13));
+        buffer.AddSegment(CreateSegment(12));
+
+        buffer.LastOrderedSequenceNumber.Should().Be(13);
+    }
+
+    [Fact]
+    public void AddSegment_WithAlreadyConsumedSegment_IgnoresSegment()
+    {
+        var buffer = new TcpReceiveBuffer(10);
+        buffer.AddSegment(CreateSegment(11));
+        buffer.RemoveAcknowledgedSegments();
+
+        buffer.AddSegment(CreateSegment(11, [0xAA]));
+
+        buffer.MapSegmentsReceived.Should().BeEmpty();
+        buffer.LastConsumedSequenceNumber.Should().Be(11);
+        buffer.LastOrderedSequenceNumber.Should().Be(11);
+    }
+
+    [Fact]
     public void FindLastOrderedSequenceNumber_WithEmptyBuffer_ReturnsLastAcked()
     {
         var buffer = new TcpReceiveBuffer();
@@ -101,7 +161,7 @@ public class TcpReceiveBufferTests
     [Fact]
     public void FindLastOrderedSequenceNumber_WithWrappedContiguousSegments_ReturnsHighestOrderedSequenceNumber()
     {
-        var buffer = new TcpReceiveBuffer();
+        var buffer = new TcpReceiveBuffer(ushort.MaxValue - 1);
         buffer.AddSegment(CreateSegment(ushort.MaxValue));
         buffer.AddSegment(CreateSegment(0));
         buffer.AddSegment(CreateSegment(1));
@@ -109,6 +169,52 @@ public class TcpReceiveBufferTests
         ushort result = buffer.FindLastOrderedSequenceNumber(ushort.MaxValue - 1);
 
         result.Should().Be(1);
+    }
+
+    [Fact]
+    public void RemoveAcknowledgedSegments_WithContiguousSegments_RemovesAndReturnsThemInOrder()
+    {
+        var buffer = new TcpReceiveBuffer(10);
+        var segment11 = CreateSegment(11, [0x11]);
+        var segment12 = CreateSegment(12, [0x12]);
+
+        buffer.AddSegment(segment12);
+        buffer.AddSegment(segment11);
+
+        IReadOnlyList<Segment> result = buffer.RemoveAcknowledgedSegments();
+
+        result.Select(segment => segment.SequenceNumber).Should().Equal(11, 12);
+        buffer.MapSegmentsReceived.Should().BeEmpty();
+        buffer.LastConsumedSequenceNumber.Should().Be(12);
+    }
+
+    [Fact]
+    public void RemoveAcknowledgedSegments_WithGap_KeepsSegmentsAfterGap()
+    {
+        var buffer = new TcpReceiveBuffer(10);
+        buffer.AddSegment(CreateSegment(11));
+        buffer.AddSegment(CreateSegment(13));
+
+        IReadOnlyList<Segment> result = buffer.RemoveAcknowledgedSegments();
+
+        result.Select(segment => segment.SequenceNumber).Should().Equal(11);
+        buffer.MapSegmentsReceived.Should().ContainKey(13);
+        buffer.LastConsumedSequenceNumber.Should().Be(11);
+    }
+
+    [Fact]
+    public void RemoveAcknowledgedSegments_WithWrappedSegments_RemovesInCircularOrder()
+    {
+        var buffer = new TcpReceiveBuffer(ushort.MaxValue - 1);
+        buffer.AddSegment(CreateSegment(0));
+        buffer.AddSegment(CreateSegment(ushort.MaxValue));
+        buffer.AddSegment(CreateSegment(1));
+
+        IReadOnlyList<Segment> result = buffer.RemoveAcknowledgedSegments();
+
+        result.Select(segment => segment.SequenceNumber).Should().Equal(ushort.MaxValue, 0, 1);
+        buffer.MapSegmentsReceived.Should().BeEmpty();
+        buffer.LastConsumedSequenceNumber.Should().Be(1);
     }
 
     private static Segment CreateSegment(ushort sequenceNumber, byte[]? data = null)

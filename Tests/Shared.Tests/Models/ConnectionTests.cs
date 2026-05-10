@@ -90,7 +90,7 @@ public class ConnectionTests
     }
 
     [Fact]
-    public void GetSegmentsToRetransmit_ReturnsSegmentsAwaitingAcknowledgement()
+    public void GetSegmentsToRetransmit_ReturnsFirstSegmentAwaitingAcknowledgement()
     {
         var connection = new Connection(new IPEndPoint(IPAddress.Loopback, 8080), TimeSpan.FromSeconds(5));
         var firstSegment = CreateSegment(10);
@@ -101,7 +101,22 @@ public class ConnectionTests
 
         connection.GetSegmentsToRetransmit()
             .Select(segment => segment.SequenceNumber)
-            .Should().Equal([10, 11]);
+            .Should().Equal([10]);
+    }
+
+    [Fact]
+    public void GetSegmentsToRetransmit_WithMaxSegments_ReturnsRequestedWindowInOrder()
+    {
+        var connection = new Connection(new IPEndPoint(IPAddress.Loopback, 8080), TimeSpan.FromSeconds(5));
+        connection.SetLastAcknowledgedSequenceId(10);
+
+        connection.UpdateConnectionInfo(Connection.State.Established, lastSegmentSent: CreateSegment(13));
+        connection.UpdateConnectionInfo(Connection.State.Established, lastSegmentSent: CreateSegment(11));
+        connection.UpdateConnectionInfo(Connection.State.Established, lastSegmentSent: CreateSegment(12));
+
+        connection.GetSegmentsToRetransmit(2)
+            .Select(segment => segment.SequenceNumber)
+            .Should().Equal([11, 12]);
     }
 
     [Fact]
@@ -141,11 +156,27 @@ public class ConnectionTests
         connection.SendBuffer.AddDuplicateAck();
 
         connection.ActivateRetransmission();
+        connection.TryMarkFastRetransmission(42).Should().BeTrue();
         connection.ActiveRetransmission.Should().BeTrue();
+        connection.LastFastRetransmittedSequenceId.Should().Be(42);
 
         connection.DeactivateRetransmission();
         connection.ActiveRetransmission.Should().BeFalse();
+        connection.LastFastRetransmittedSequenceId.Should().BeNull();
         connection.SendBuffer.DuplicateAckCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void SetLastAcknowledgedSequenceId_RearmsFastRetransmission()
+    {
+        var connection = new Connection(new IPEndPoint(IPAddress.Loopback, 8080), TimeSpan.FromSeconds(5));
+        connection.TryMarkFastRetransmission(42).Should().BeTrue();
+
+        connection.SetLastAcknowledgedSequenceId(42);
+
+        connection.LastFastRetransmittedSequenceId.Should().BeNull();
+        connection.TryMarkFastRetransmission(43).Should().BeTrue();
+        connection.LastFastRetransmittedSequenceId.Should().Be(43);
     }
 
     [Fact]

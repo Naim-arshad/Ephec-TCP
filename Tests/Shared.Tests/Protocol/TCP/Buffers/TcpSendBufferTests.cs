@@ -17,6 +17,7 @@ public class TcpSendBufferTests
         var buffer = new TcpSendBuffer();
 
         buffer.SegmentsToSend.Should().BeEmpty();
+        buffer.PendingSegmentCount.Should().Be(0);
         buffer.DuplicateAckCount.Should().Be(0);
     }
 
@@ -62,6 +63,21 @@ public class TcpSendBufferTests
     }
 
     [Fact]
+    public void Acknowledge_WithInitialRandomKnownSegment_RemovesSegmentAndReturnsTrue()
+    {
+        var buffer = new TcpSendBuffer();
+        var connection = CreateConnection();
+        var segment = CreateSegment(57662);
+        buffer.AddSegmentToSend(segment);
+
+        bool result = buffer.Acknowledge(CreateAckSegment(57662, 100), connection);
+
+        result.Should().BeTrue();
+        buffer.SegmentsToSend.Should().NotContainKey(57662);
+        connection.LastAcknowledgedSequenceId.Should().Be(57662);
+    }
+
+    [Fact]
     public void Acknowledge_WithKnownSegment_DeactivatesRetransmissionAndResetsCount()
     {
         var buffer = new TcpSendBuffer();
@@ -78,10 +94,11 @@ public class TcpSendBufferTests
     }
 
     [Fact]
-    public void Acknowledge_WithUnknownNonDuplicateSegment_ReturnsFalseAndKeepsBufferUnchanged()
+    public void Acknowledge_WithOldUnknownSegment_ReturnsFalseAndKeepsBufferUnchanged()
     {
         var buffer = new TcpSendBuffer();
         var connection = CreateConnection();
+        connection.SetLastAcknowledgedSequenceId(100);
         var segment = CreateSegment(42);
         buffer.AddSegmentToSend(segment);
 
@@ -91,6 +108,43 @@ public class TcpSendBufferTests
         buffer.SegmentsToSend.Should().ContainKey(42)
             .WhoseValue.Should().BeSameAs(segment);
         buffer.DuplicateAckCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void Acknowledge_WithCumulativeAck_RemovesAllCoveredSegments()
+    {
+        var buffer = new TcpSendBuffer();
+        var connection = CreateConnection();
+        connection.SetLastAcknowledgedSequenceId(40);
+        buffer.AddSegmentToSend(CreateSegment(41));
+        buffer.AddSegmentToSend(CreateSegment(42));
+        buffer.AddSegmentToSend(CreateSegment(43));
+
+        bool result = buffer.Acknowledge(CreateAckSegment(42), connection);
+
+        result.Should().BeTrue();
+        buffer.SegmentsToSend.Should().NotContainKey(41);
+        buffer.SegmentsToSend.Should().NotContainKey(42);
+        buffer.SegmentsToSend.Should().ContainKey(43);
+        buffer.PendingSegmentCount.Should().Be(1);
+        connection.LastAcknowledgedSequenceId.Should().Be(42);
+    }
+
+    [Fact]
+    public void Acknowledge_WithCumulativeAckForAbsentBoundary_RemovesCoveredSegments()
+    {
+        var buffer = new TcpSendBuffer();
+        var connection = CreateConnection();
+        connection.SetLastAcknowledgedSequenceId(40);
+        buffer.AddSegmentToSend(CreateSegment(41));
+        buffer.AddSegmentToSend(CreateSegment(43));
+
+        bool result = buffer.Acknowledge(CreateAckSegment(42), connection);
+
+        result.Should().BeTrue();
+        buffer.SegmentsToSend.Should().NotContainKey(41);
+        buffer.SegmentsToSend.Should().ContainKey(43);
+        connection.LastAcknowledgedSequenceId.Should().Be(42);
     }
 
     [Fact]

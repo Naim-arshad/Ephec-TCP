@@ -67,4 +67,19 @@ public class LoggerTests : IDisposable
         output.ToString().Should().BeEmpty();
         error.ToString().Should().Contain("[Error] failed Exception: InvalidOperationException - boom");
     }
+
+    [Fact]
+    public void Info_WithSource_WritesFormattedSource()
+    {
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        Console.SetOut(output);
+        Console.SetError(error);
+        Logger.MinimumLevel = Logger.LogLevel.Debug;
+
+        Logger.Info("tcp.connection", "connected");
+
+        output.ToString().Should().Contain("[Info] [tcp.connection] connected");
+        error.ToString().Should().BeEmpty();
+    }
 }

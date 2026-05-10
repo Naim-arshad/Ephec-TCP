@@ -7,11 +7,24 @@ namespace Shared.Protocol.TCP.Buffers
 {
     public class TcpSendBuffer
     {
+        private const string LogSource = "tcp.send-buffer";
+
         private readonly Lock _sync = new();
         private readonly Dictionary<ushort, Segment> _segmentsToSend;
         private readonly HashSet<ushort> _duplicateAckPacketSequences;
 
         public int DuplicateAckCount { get; private set; }
+        public int PendingSegmentCount
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _segmentsToSend.Count;
+                }
+            }
+        }
+
         public IReadOnlyDictionary<ushort, Segment> SegmentsToSend
         {
             get
@@ -36,11 +49,12 @@ namespace Shared.Protocol.TCP.Buffers
             {
                 if (_segmentsToSend.ContainsKey(segment.SequenceNumber))
                 {
-                    Logger.Warning($"Segment with sequence number {segment.SequenceNumber} already exists in the send buffer.");
+                    Logger.Warning(LogSource, $"Segment already exists in send buffer. sequence={segment.SequenceNumber}");
                 }
                 else
                 {
                     _segmentsToSend[segment.SequenceNumber] = segment;
+                    Logger.Debug(LogSource, $"Segment added to send buffer. sequence={segment.SequenceNumber}, pendingSegments={_segmentsToSend.Count}");
                 }
             }
         }
@@ -50,30 +64,39 @@ namespace Shared.Protocol.TCP.Buffers
             ushort acknowledgedSequenceNumber = SegmentPayloadReader.ReadAckSequence(segment);
             bool acknowledged = false;
             bool duplicateAckThresholdReached = false;
+            List<ushort> acknowledgedSegments = [];
 
             lock (_sync)
             {
-                if (_segmentsToSend.ContainsKey(acknowledgedSequenceNumber))
+                acknowledgedSegments = GetCumulativelyAcknowledgedSequencesUnsafe(
+                    acknowledgedSequenceNumber,
+                    connection.LastAcknowledgedSequenceId);
+
+                if (acknowledgedSegments.Count > 0)
                 {
-                    Logger.Info($"Acknowledging segment with sequence number {acknowledgedSequenceNumber}");
-                    _segmentsToSend.Remove(acknowledgedSequenceNumber);
+                    Logger.Info(LogSource, $"Segments acknowledged. throughSequence={acknowledgedSequenceNumber}, count={acknowledgedSegments.Count}");
+                    foreach (ushort sequenceNumber in acknowledgedSegments)
+                    {
+                        _segmentsToSend.Remove(sequenceNumber);
+                    }
+
                     ClearDuplicateAcksUnsafe();
                     acknowledged = true;
                 }
-                else if(connection.LastAcknowledgedSequenceId == acknowledgedSequenceNumber)
+                else if (connection.LastAcknowledgedSequenceId == acknowledgedSequenceNumber)
                 {
                     if (!_duplicateAckPacketSequences.Add(segment.SequenceNumber))
                     {
-                        Logger.Warning($"Repeated duplicate ACK packet ignored for segment {segment.SequenceNumber}");
+                        Logger.Warning(LogSource, $"Repeated duplicate ACK ignored. ackPacketSequence={segment.SequenceNumber}, acknowledgedSequence={acknowledgedSequenceNumber}");
                         return false;
                     }
 
-                    Logger.Warning($"Acknowledge duplicate detected for segment {segment.SequenceNumber}");
+                    Logger.Warning(LogSource, $"Duplicate ACK detected. ackPacketSequence={segment.SequenceNumber}, acknowledgedSequence={acknowledgedSequenceNumber}");
                     AddDuplicateAckUnsafe();
                     duplicateAckThresholdReached = DuplicateAckCount >= 3;
                     if(duplicateAckThresholdReached)
                     {
-                        Logger.Info($"Triple duplicate ACK detected for segment {segment.SequenceNumber}. Marking for retransmission.");
+                        Logger.Info(LogSource, $"Triple duplicate ACK detected. ackPacketSequence={segment.SequenceNumber}, acknowledgedSequence={acknowledgedSequenceNumber}, action=activate-retransmission");
                         ClearDuplicateAcksUnsafe();
                     }
                 }
@@ -97,11 +120,85 @@ namespace Shared.Protocol.TCP.Buffers
             return false;
         }
 
+        private List<ushort> GetCumulativelyAcknowledgedSequencesUnsafe(
+            ushort acknowledgedSequenceNumber,
+            ushort lastAcknowledgedSequenceNumber)
+        {
+            ushort acknowledgedDistance = TcpReceiveBuffer.CircularDistance(
+                lastAcknowledgedSequenceNumber,
+                acknowledgedSequenceNumber);
+
+            if (acknowledgedDistance == 0)
+            {
+                return [];
+            }
+
+            bool acknowledgementMovesForward = acknowledgedDistance <= ushort.MaxValue / 2;
+            if (!acknowledgementMovesForward)
+            {
+                if (_segmentsToSend.ContainsKey(acknowledgedSequenceNumber))
+                {
+                    return [acknowledgedSequenceNumber];
+                }
+
+                return [];
+            }
+
+            ushort highestPendingDistance = _segmentsToSend.Keys
+                .Select(sequenceNumber => TcpReceiveBuffer.CircularDistance(
+                    lastAcknowledgedSequenceNumber,
+                    sequenceNumber))
+                .Where(distance => distance > 0 && distance <= ushort.MaxValue / 2)
+                .DefaultIfEmpty((ushort)0)
+                .Max();
+
+            if (acknowledgedDistance > highestPendingDistance)
+            {
+                return [];
+            }
+
+            return [.. _segmentsToSend.Keys
+                .Where(sequenceNumber =>
+                {
+                    ushort distanceFromLastAck = TcpReceiveBuffer.CircularDistance(
+                        lastAcknowledgedSequenceNumber,
+                        sequenceNumber);
+
+                    if (distanceFromLastAck == 0 || distanceFromLastAck > acknowledgedDistance)
+                    {
+                        return false;
+                    }
+
+                    ushort distanceToAcknowledgement = TcpReceiveBuffer.CircularDistance(
+                        sequenceNumber,
+                        acknowledgedSequenceNumber);
+
+                    return distanceToAcknowledgement <= ushort.MaxValue / 2;
+                })];
+        }
+
         public List<Segment> GetSegmentsToRetransmit()
         {
             lock (_sync)
             {
                 return [.. _segmentsToSend.Values];
+            }
+        }
+
+        public List<Segment> GetSegmentsToRetransmit(ushort lastAcknowledgedSequenceNumber, int maxSegments)
+        {
+            if (maxSegments <= 0)
+            {
+                return [];
+            }
+
+            lock (_sync)
+            {
+                return [.. _segmentsToSend.Values
+                    .OrderBy(segment => TcpReceiveBuffer.CircularDistance(
+                        lastAcknowledgedSequenceNumber,
+                        segment.SequenceNumber))
+                    .Take(maxSegments)];
             }
         }
 

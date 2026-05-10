@@ -6,10 +6,13 @@ using System.Collections.Concurrent;
 
 namespace Shared.Protocol.TCP
 {
-    public class TcpRetransmissionHandler(UdpTransport udpTransport)
+    public class TcpRetransmissionHandler(UdpTransport udpTransport, int fullWindowThreshold = 256)
     {
+        private const string LogSource = "tcp.retransmission";
+
         //TODO : monter les info dans TCPConnection pour stantardiser les timesout
         private readonly UdpTransport _udpTransport = udpTransport;
+        private readonly int _fullWindowThreshold = fullWindowThreshold;
         private readonly SemaphoreSlim _semaphore = new(5);
         private const int RetransmissionTimeout = 5000; // in milliseconds
         private const int MaxRetransmissions = 5; // Maximum number of retransmissions before giving up on a segment.
@@ -24,6 +27,7 @@ namespace Shared.Protocol.TCP
                 throw new ArgumentNullException(nameof(mapConnection), 
                     "MapConnection cannot be null when starting the retransmission loop.");
             }
+            Logger.Info(LogSource, $"Retransmission loop started. intervalMs={RetransmissionTimeout}, maxRetransmissions={MaxRetransmissions}, fullWindowThreshold={_fullWindowThreshold}");
             try
             {
                 while (!cancellationToken.IsCancellationRequested)
@@ -32,21 +36,28 @@ namespace Shared.Protocol.TCP
 
                     foreach (var connection in mapConnection)
                     {
-                        if(connection.Value.ActiveRetransmission)
+                        if (ShouldRetransmit(connection.Value))
                         {
-                            foreach (var segment in connection.Value.GetSegmentsToRetransmit())
+                            int maxSegmentsToRetransmit =
+                                connection.Value.SendBuffer.PendingSegmentCount >= _fullWindowThreshold
+                                    ? _fullWindowThreshold
+                                    : 1;
+
+                            bool retransmittedAnySegment = false;
+                            foreach (var segment in connection.Value.GetSegmentsToRetransmit(maxSegmentsToRetransmit))
                             {
-                                if (connection.Value.RetransmissionCount < MaxRetransmissions && connection.Value.ActiveRetransmission)
+                                if (connection.Value.RetransmissionCount < MaxRetransmissions)
                                 {
                                     bool semaphoreAcquired = false;
                                     try
                                     {
-                                        Logger.Debug($"Retransmitting segment with sequence number {segment.SequenceNumber} " +
-                                            $"to {connection.Value.Endpoint}. Retransmission count: {connection.Value.RetransmissionCount + 1}");
+                                        Logger.Debug(
+                                            LogSource,
+                                            $"Retransmitting segment. remote={connection.Value.Endpoint}, sequence={segment.SequenceNumber}, attempt={connection.Value.RetransmissionCount + 1}");
                                         await _semaphore.WaitAsync(cancellationToken);
                                         semaphoreAcquired = true;
                                         await _udpTransport.SendSegmentAsync(SegmentSerializer.Serialize(segment), connection.Value.Endpoint);
-                                        connection.Value.IncrementRetransmissionCount();
+                                        retransmittedAnySegment = true;
                                     }
                                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                                     {
@@ -54,9 +65,7 @@ namespace Shared.Protocol.TCP
                                     }
                                     catch (Exception ex) //TODO: Consider catching more specific exceptions if needed (e.g., IOException for network errors).
                                     {
-                                        // Log the exception or handle it as needed.
-                                        Console.WriteLine($"Error retransmitting segment with sequence number " +
-                                            $"{segment.SequenceNumber} to {connection.Value.Endpoint}: {ex.Message}");
+                                        Logger.Error(ex, LogSource, $"Retransmission failed. remote={connection.Value.Endpoint}, sequence={segment.SequenceNumber}");
                                     }
                                     finally
                                     {
@@ -66,12 +75,16 @@ namespace Shared.Protocol.TCP
                                 }
                                 else
                                 {
-                                    Console.WriteLine($"Max retransmissions reached for segment with sequence number " +
-                                        $"{segment.SequenceNumber} to {connection.Value.Endpoint}. Closing connection.");
+                                    Logger.Error(
+                                        LogSource,
+                                        $"Max retransmissions reached. remote={connection.Value.Endpoint}, sequence={segment.SequenceNumber}, max={MaxRetransmissions}, action=close-connection");
                                     mapConnection.TryRemove(connection.Key, out _);
                                     break; // Exit the loop for this connection since it's being removed.
                                 }
                             }
+
+                            if (retransmittedAnySegment)
+                                connection.Value.IncrementRetransmissionCount();
                         }
                         //TODO désactivé la retransmission active après un certain nombre de retransmissions ou après un certain temps d'inactivité pour éviter les boucles infinies de retransmissions.
                     }
@@ -79,8 +92,18 @@ namespace Shared.Protocol.TCP
             }
             catch (TaskCanceledException) //TODO: Consider catching more specific exceptions if needed (e.g., IOException for network errors).
             {
-                // Expected when cancellation is requested, no action needed.
+                Logger.Debug(LogSource, "Retransmission loop cancelled.");
+            }
+            finally
+            {
+                Logger.Info(LogSource, "Retransmission loop stopped.");
             }
         } 
+
+        private bool ShouldRetransmit(Connection connection)
+        {
+            return connection.ActiveRetransmission ||
+                connection.SendBuffer.PendingSegmentCount >= _fullWindowThreshold;
+        }
     }
 }

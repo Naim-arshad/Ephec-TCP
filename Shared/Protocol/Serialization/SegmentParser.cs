@@ -6,13 +6,15 @@ namespace Shared.Protocol.Serialization
 {
     public class SegmentParser
     {
+        private const string LogSource = "protocol.serialization";
+
         public static Segment Deserialize(byte[] packetBytes)
         {
             ArgumentNullException.ThrowIfNull(packetBytes);
 
             if (packetBytes.Length < 5)
             {
-                Logger.Warning($"Packet rejected: header is incomplete. Received {packetBytes.Length} byte(s), expected at least 5.");
+                Logger.Warning(LogSource, $"Packet rejected. reason=incomplete-header, bytes={packetBytes.Length}, expectedMinimum=5");
                 throw new ArgumentException("Le tableau d'octets est trop court pour contenir un paquet valide.");
             }
 
@@ -27,22 +29,22 @@ namespace Shared.Protocol.Serialization
             }
             catch (InvalidOperationException ex)
             {
-                Logger.Error(ex, $"Packet rejected: invalid flags value 0x{rawFlags:X2} for sequence {sequenceNumber}.");
+                Logger.Error(ex, LogSource, $"Packet rejected. reason=invalid-flags, sequence={sequenceNumber}, flags=0x{rawFlags:X2}");
                 throw;
             }
 
             if (packetBytes.Length != 5 + dataLength)
             {
                 Logger.Warning(
-                    $"Packet rejected: payload length mismatch for sequence {sequenceNumber}. " +
-                    $"Header announces {dataLength} byte(s), packet contains {packetBytes.Length - 5} byte(s).");
+                    LogSource,
+                    $"Packet rejected. reason=payload-length-mismatch, sequence={sequenceNumber}, announcedPayloadBytes={dataLength}, actualPayloadBytes={packetBytes.Length - 5}");
                 throw new ArgumentException("La longueur des données ne correspond pas à la taille du tableau d'octets.\n" + BytesToHexString(packetBytes));
             }
 
             byte[] data = new byte[dataLength];
             Array.Copy(packetBytes, 5, data, 0, dataLength);
             var segment = new Segment(sequenceNumber, flags, data);
-            Logger.Debug($"Packet deserialized: {segment}.");
+            Logger.Debug(LogSource, $"Packet deserialized. sequence={segment.SequenceNumber}, flags={segment.Flags}, payloadBytes={segment.Data.Length}");
 
             return segment;
         }

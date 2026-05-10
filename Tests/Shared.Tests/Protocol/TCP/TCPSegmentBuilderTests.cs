@@ -36,15 +36,16 @@ public class TCPSegmentBuilderTests
     }
 
     [Fact]
-    public void BuildAck_ReturnsAckSegmentAcknowledgingReceivedSegment()
+    public void BuildAck_ReturnsAckSegmentAcknowledgingLastOrderedReceivedSegment()
     {
         var connection = CreateConnection();
         var receivedSegment = CreateSegment(0xBEEF, FlagOptions.Syn | FlagOptions.Ack);
+        connection.ReceiveBuffer.SetLastOrderedSequenceNumber(0x1234);
 
         var segment = TCPSegmentBuilder.BuildAck(receivedSegment, connection);
 
         segment.Flags.Value.Should().Be((byte)FlagOptions.Ack);
-        segment.Data.Should().Equal([0xBE, 0xEF]);
+        segment.Data.Should().Equal([0x12, 0x34]);
     }
 
     [Fact]

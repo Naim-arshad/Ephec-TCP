@@ -6,6 +6,8 @@ namespace Shared.Protocol.Serialization
 {
     public class SegmentSerializer
     {
+        private const string LogSource = "protocol.serialization";
+
         public static byte[] Serialize(Segment segment)
         {
             ArgumentNullException.ThrowIfNull(segment);
@@ -34,8 +36,8 @@ namespace Shared.Protocol.Serialization
 
             byte[] packet = stream.ToArray();
             Logger.Debug(
-                $"Packet serialized: sequence={segment.SequenceNumber}, flags=0x{segment.Flags.Value:X2}, " +
-                $"payloadLength={data.Length}, packetLength={packet.Length}.");
+                LogSource,
+                $"Packet serialized. sequence={segment.SequenceNumber}, flags={segment.Flags}, payloadBytes={data.Length}, packetBytes={packet.Length}");
 
             return packet;
         }
@@ -44,6 +46,13 @@ namespace Shared.Protocol.Serialization
         {
             Span<byte> sequenceBuffer = stackalloc byte[2];
             BinaryPrimitives.WriteUInt16BigEndian(sequenceBuffer, segment.SequenceNumber);
+            return sequenceBuffer.ToArray();
+        }
+
+        public static byte[] SerializeSequenceNumber(ushort sequenceNumber)
+        {
+            Span<byte> sequenceBuffer = stackalloc byte[2];
+            BinaryPrimitives.WriteUInt16BigEndian(sequenceBuffer, sequenceNumber);
             return sequenceBuffer.ToArray();
         }
     }
