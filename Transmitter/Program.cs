@@ -13,7 +13,8 @@ namespace Transmitter
             Logger.Info(LogSource, "Starting transmitter. localPort=11000, remote=127.0.0.1:12000");
             await connection.InitiatConnection("127.0.0.1:12000");
             await connection.SendFile("127.0.0.1:12000", "./test.txt");
-            Logger.Info(LogSource, "Transmitter is idle. Press Enter to exit.");
+            await connection.StopConnection("127.0.0.1:12000");
+            Logger.Info(LogSource, "Transmition is complete. Press Enter to exit.");
             Console.ReadLine();
         }
     }

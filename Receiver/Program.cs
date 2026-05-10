@@ -15,7 +15,7 @@ namespace Receiver
             TcpConnection connection = new(12000, 30);
             Logger.Info(LogSource, "Starting receiver. localPort=12000, outputFile=received_file.bin");
             Logger.Info(LogSource, "Receiver is listening. Press Enter to exit.");
-            Console.ReadLine();
+            
         }
     }
 }

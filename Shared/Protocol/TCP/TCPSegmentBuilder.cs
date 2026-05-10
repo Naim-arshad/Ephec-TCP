@@ -51,5 +51,23 @@ namespace Shared.Protocol.TCP
                 data: data
                 );
         }
+        public static Segment BuildFin(Connection connection)
+        {
+            return new Segment(
+                sequence: connection.GetNextSequenceNumber(),
+                flags: new((byte)SegmentFlags.FlagOptions.Fin),
+                data: []
+                );
+        }
+        public static Segment BuildFinAck(Connection connection, Segment segment)
+        {
+            return new Segment(
+                sequence: connection.GetNextSequenceNumber(),
+                flags: new((byte)(SegmentFlags.FlagOptions.Fin | SegmentFlags.FlagOptions.Ack)),
+                data: SegmentSerializer.SerializeSequenceNumber(
+                    connection.ReceiveBuffer.LastOrderedSequenceNumber
+                    )
+                );
+        }
     }
 }

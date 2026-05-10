@@ -31,6 +31,14 @@ namespace Shared.Protocol.TCP
                     Logger.Warning(LogSource, $"RST received. remote={connectionInfo.Endpoint}, {FormatSegment(segment)}");
                     //TODO HandleRst(segment, connectionInfo, mapConnection);
                     break;
+                case (byte)SegmentFlags.FlagOptions.Fin:
+                    Logger.Warning(LogSource, $"FIN received. remote={connectionInfo.Endpoint}, {FormatSegment(segment)}");
+                    byteToSend = HandleFin(segment, connectionInfo, mapConnection);
+                    break;
+                case ((byte)SegmentFlags.FlagOptions.Fin | (byte)SegmentFlags.FlagOptions.Ack):
+                    Logger.Warning(LogSource, $"FIN-ACK received. remote={connectionInfo.Endpoint}, {FormatSegment(segment)}");
+                    byteToSend = HandleFinAck(segment, connectionInfo, mapConnection);
+                    break;
                 case (byte)SegmentFlags.FlagOptions.None:
                     byteToSend = HandleData(segment, connectionInfo, mapConnection);
                     break;
@@ -178,7 +186,44 @@ namespace Shared.Protocol.TCP
                 return SegmentSerializer.Serialize(ackSegment);
             }
         }
-
+        private static byte[] HandleFin(Segment segment, Connection connectionInfo,
+            ConcurrentDictionary<string, Connection> mapConnection)
+        {
+            Logger.Debug(LogSource, $"Handling FIN. remote={connectionInfo.Endpoint}, {FormatSegment(segment)}");
+            if (connectionInfo.CurrentState != Connection.State.Established)
+            {
+                Logger.Error(LogSource, $"FIN received before connection was established. remote={connectionInfo.Endpoint}, state={connectionInfo.CurrentState}, action=send-rst");
+                Segment segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo);
+                mapConnection.TryRemove(connectionInfo.Endpoint.ToString(), out _);
+                return SegmentSerializer.Serialize(segmentToSend);
+            }
+            else
+            {
+                Segment ackSegment = TCPSegmentBuilder.BuildFinAck(connectionInfo, segment);
+                connectionInfo.UpdateConnectionInfo(Connection.State.CloseWait, segment, ackSegment);
+                Logger.Info(LogSource, $"Connection closing. remote={connectionInfo.Endpoint}");
+                return SegmentSerializer.Serialize(ackSegment);
+            }
+        }
+        private static byte[] HandleFinAck(Segment segment, Connection connectionInfo,
+            ConcurrentDictionary<string, Connection> mapConnection)
+        {
+            Logger.Debug(LogSource, $"Handling FIN-ACK. remote={connectionInfo.Endpoint}, {FormatSegment(segment)}");
+            if (connectionInfo.CurrentState != Connection.State.FinWait1)
+            {
+                Logger.Error(LogSource, $"FIN-ACK received in invalid state. remote={connectionInfo.Endpoint}, state={connectionInfo.CurrentState}, action=send-rst");
+                Segment segmentToSend = TCPSegmentBuilder.BuildRst(segment, connectionInfo);
+                mapConnection.TryRemove(connectionInfo.Endpoint.ToString(), out _);
+                return SegmentSerializer.Serialize(segmentToSend);
+            }
+            else
+            {
+                connectionInfo.UpdateConnectionInfo(Connection.State.TimeWait, segment, null);
+                mapConnection.TryRemove(connectionInfo.Endpoint.ToString(), out _);
+                Logger.Info(LogSource, $"Connection closed. remote={connectionInfo.Endpoint}");
+                return [];
+            }
+        }
         private static string FormatSegment(Segment segment)
         {
             return $"sequence={segment.SequenceNumber}, flags={segment.Flags}, payloadBytes={segment.Data.Length}";

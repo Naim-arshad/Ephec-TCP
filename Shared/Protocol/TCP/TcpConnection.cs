@@ -164,14 +164,23 @@ namespace Shared.Protocol.TCP
                 $"File transfer completed. remote={ip}, file={filePath}, chunks={sentChunkCount}, bytes={sentByteCount}");
         }
 
-        public static ushort RandomSequenceNumber(ushort excludeNumber)
+        public async Task StopConnection(string ip)
         {
-            ushort number = (ushort)rand.Next(0, ushort.MaxValue);
-            if (number != excludeNumber && (number + 2) <= ushort.MaxValue)
-                number += 2;
-            else
-                number = 0;
-            return number;
+            Logger.Info(LogSource, "Closing TCP connection.");
+
+            EndPoint endPoint = IPEndPoint.Parse(ip);
+            if(_mapConnection.TryGetValue(endPoint.ToString(), out Connection? connectionInfo) && 
+                connectionInfo.CurrentState == Connection.State.Established)
+            {
+                Segment finSegment = TCPSegmentBuilder.BuildFin(connectionInfo);
+                connectionInfo.UpdateConnectionInfo(Connection.State.FinWait1, null, finSegment);
+                Logger.Debug(LogSource, $"Sending FIN. remote={ip}, {FormatSegment(finSegment)}");
+                await _udpTransport.SendSegmentAsync(
+                    SegmentSerializer.Serialize(finSegment),
+                    connectionInfo.Endpoint);
+            }
+            _cancellationTokenSource.Cancel();
+            await _udpTransport.StopServer();
         }
 
         private static string FormatSegment(Segment segment)
