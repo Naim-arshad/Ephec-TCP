@@ -1,28 +1,21 @@
-﻿using Shared.Models;
+﻿using Shared.Logging;
+using Shared.Protocol;
 using Shared.Protocol.TCP;
-using System.Net;
-using System.Net.Sockets;
-using static System.Net.Mime.MediaTypeNames;
-
 namespace Transmitter
 {
     internal class Program
     {
+        private const string LogSource = "app.transmitter";
+
         static async Task Main(string[] args)
         {
-            
-
-            TcpConnection tcpOverlayTransport = new TcpConnection(12000);
-
-            string? key = "";
-            while (key != "q")
-            {
-                Console.WriteLine("Sending packet...");
-                await tcpOverlayTransport.SendSyn(IPEndPoint.Parse("127.0.0.1:11000"));
-                key = Console.ReadLine();
-            }
-
-            
+            TcpConnection connection = new(11000, 30);
+            Logger.Info(LogSource, "Starting transmitter. localPort=11000, remote=127.0.0.1:12000");
+            await connection.InitiatConnection("127.0.0.1:12000");
+            await connection.SendFile("127.0.0.1:12000", "./test.txt");
+            await connection.StopConnection("127.0.0.1:12000");
+            Logger.Info(LogSource, "Transmition is complete. Press Enter to exit.");
+            Console.ReadLine();
         }
     }
 }

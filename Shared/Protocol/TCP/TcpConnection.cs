@@ -1,5 +1,10 @@
-﻿using Shared.Models;
-using System;
+﻿using Shared.Logging;
+using Shared.Models;
+using Shared.Models.FileTransfer;
+using Shared.Models.Segments;
+using Shared.Protocol.Serialization;
+using Shared.Protocol.UDP;
+using Shared.Protocol.FileTransfer;
 using System.Collections.Concurrent;
 using System.Net;
 
@@ -8,68 +13,243 @@ namespace Shared.Protocol.TCP
 
     public class TcpConnection
     {
-        private readonly ConcurrentDictionary<string, ConnectionInfo> _mapConnection;
-        private readonly UdpTransport _udpTransport;
-        private readonly static Random rand = new();
-        private readonly TcpRetransmissionHandler _retransmissionHandler;
-        private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private const string LogSource = "tcp.connection";
+        private const int TransmissionWindowSize = 256;
+        private const int SendWindowPollDelayMilliseconds = 10;
 
-        public TcpConnection(int port)
+        private readonly static Random rand = new();
+
+        private readonly ConcurrentDictionary<string, Connection> _mapConnection;
+        private readonly IUdpTransport _udpTransport;
+        private readonly ITcpRetransmissionHandler _retransmissionHandler;
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly TimeSpan _timeout;
+        private readonly string? _receivedFilePath;
+
+        public TcpConnection(int port, int timeout, string? receivedFilePath = "received_file.bin")
+            : this(
+                new UdpTransport(port),
+                null,
+                TimeSpan.FromSeconds(timeout),
+                receivedFilePath)
         {
-            _mapConnection = new ConcurrentDictionary<string, ConnectionInfo>();
-            _udpTransport = new UdpTransport(port);
+        }
+
+        internal TcpConnection(
+            IUdpTransport udpTransport,
+            ITcpRetransmissionHandler? retransmissionHandler,
+            TimeSpan timeout,
+            string? receivedFilePath = "received_file.bin")
+        {
+            ArgumentNullException.ThrowIfNull(udpTransport);
+
+            if (timeout <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(timeout), "Le timeout doit etre strictement positif.");
+            }
+
+            _mapConnection = new ConcurrentDictionary<string, Connection>();
+            _udpTransport = udpTransport;
+            _receivedFilePath = receivedFilePath;
             
             _udpTransport.OnSegmentReceived += OnSegmentReceived;
+            _timeout = timeout;
             _udpTransport.StartServer();
 
-            _retransmissionHandler = new TcpRetransmissionHandler(_udpTransport);
+            _retransmissionHandler = retransmissionHandler ?? new TcpRetransmissionHandler(_udpTransport, TransmissionWindowSize);
             _ = _retransmissionHandler.LoopRetransmissions(_mapConnection, _cancellationTokenSource.Token);
+            Logger.Info(
+                LogSource,
+                $"TCP connection manager started. timeoutSeconds={_timeout.TotalSeconds}, receiveFile={receivedFilePath ?? "disabled"}");
         }
+
+        internal IReadOnlyDictionary<string, Connection> Connections => _mapConnection;
 
         public void OnSegmentReceived(byte[] PacketBinary, IPEndPoint ip)
         {
-            Console.Write($"{ip}: ");
-            Segment segment = Segment.Deserialize(PacketBinary);
-            byte[] byteToSend;
+            Segment segment;
+            byte[] packet;
+            Logger.Debug(LogSource, $"Incoming packet. remote={ip}, bytes={PacketBinary.Length}");
 
-            switch (segment.Flags.Value)
+            try
             {
-                case (byte)SegmentFlags.FlagOptions.Syn:
-                    byteToSend = TcpFlagHandler.HandleSYN(segment, ip, _mapConnection).Serialize();
-                    _ = _udpTransport.SendSegmentAsync(byteToSend, ip); 
-                    break;
-                case ((byte)SegmentFlags.FlagOptions.Syn | (byte)SegmentFlags.FlagOptions.Ack):
-                    Console.WriteLine("TODO: Gérer le SYN-ACK");
-                    break;
-                // Ajouter d'autres cas pour gérer différents types de segments
-                case (byte)SegmentFlags.FlagOptions.Ack:
-                    Console.WriteLine("TODO: Gérer l'ACK");
-                    break;
-                default:
-                    throw new Exception("Type de segment non géré");
+                segment = SegmentParser.Deserialize(PacketBinary);
+                Logger.Debug(LogSource, $"Incoming segment parsed. remote={ip}, {FormatSegment(segment)}");
+
+                _mapConnection.TryGetValue(ip.ToString(), out Connection? connectionInfo);
+                if (connectionInfo == null)
+                {
+                    connectionInfo = new(ip, _timeout, _receivedFilePath);
+                    _mapConnection[ip.ToString()] = connectionInfo;
+                    Logger.Info(LogSource, $"Connection context created. remote={ip}, state={connectionInfo.CurrentState}");
+                }
+
+                packet = TCPSegmentProcessor.Process(segment, connectionInfo, _mapConnection);
+
+            } catch (Exception ex)
+            {
+                Logger.Error(ex, LogSource, $"Error while processing incoming segment. remote={ip}");
+                return;
+            }
+            if(packet != null && packet.Length >= 5)
+            {
+                Logger.Debug(LogSource, $"Sending response packet. remote={ip}, bytes={packet.Length}");
+                _ = _udpTransport.SendSegmentAsync(packet, ip);
+            }
+            else
+            {
+                Logger.Debug(LogSource, $"No response packet generated. remote={ip}");
             }
         }
-        
-        public async Task SendSyn(IPEndPoint ip)
+
+        public async Task InitiatConnection(string ip)
         {
-            //TODO: implémenter sendSyn (ci-dessous est un code basique pour tester)
-            Segment packet = new(RandomSequenceNumber(0), new SegmentFlags(SegmentFlags.FlagOptions.Syn), new byte[0x02]);
-            byte[] PacketBinary = packet.Serialize();
+            Logger.Info(LogSource, $"Initiating connection. remote={ip}");
+
+            IPEndPoint endPoint = IPEndPoint.Parse(ip);
+            Connection connectionInfo = new(endPoint, _timeout);
+            Segment segment = TCPSegmentBuilder.BuildSyn(connectionInfo);
+
+            _mapConnection.TryAdd(endPoint.ToString(), connectionInfo);
+            connectionInfo.UpdateConnectionInfo(Connection.State.SynSent, null, segment);
+            Logger.Debug(LogSource, $"Sending SYN. remote={endPoint}, {FormatSegment(segment)}");
 
             _ = _udpTransport.SendSegmentAsync(
-                PacketBinary,
-                ip
-            );
+                SegmentSerializer.Serialize(segment), 
+                endPoint);
+
+            while(connectionInfo.CurrentState != Connection.State.Established)
+            {
+                //TODO
+                await Task.Delay(100);
+            }
+            Logger.Info(LogSource, $"Connection established. remote={endPoint}");
         }
 
-        public static ushort RandomSequenceNumber(ushort excludeNumber)
+        public async Task SendFile(string ip, string filePath)
         {
-            ushort number = (ushort)rand.Next(0, ushort.MaxValue);
-            if (number != excludeNumber && (number + 2) <= ushort.MaxValue)
-                number += 2;
-            else
-                number = 0;
-            return number;
+            Logger.Info(LogSource, $"Preparing file transfer. remote={ip}, file={filePath}");
+            using FileChunker fileChunker = new FileChunker(filePath, 1024);
+            IPEndPoint endPoint = IPEndPoint.Parse(ip);
+            Logger.Info(
+                LogSource,
+                $"Starting file transfer. remote={ip}, file={filePath}, bytes={fileChunker.TotalSize}, chunkSize=1024");
+
+            if (!_mapConnection.TryGetValue(endPoint.ToString(), out Connection? connectionInfo) || 
+                connectionInfo.CurrentState != Connection.State.Established)
+            {
+                Logger.Error(LogSource, $"No established connection found. remote={ip}, file={filePath}");
+                return;
+            }
+
+            int sentChunkCount = 0;
+            long sentByteCount = 0;
+            FileChunk? fileChunk = fileChunker.GetNextChunk();
+            while (fileChunk is not null) 
+            {
+                while (connectionInfo.SendBuffer.PendingSegmentCount >= TransmissionWindowSize)
+                {
+                    if (!_mapConnection.ContainsKey(endPoint.ToString()) ||
+                        connectionInfo.CurrentState != Connection.State.Established)
+                    {
+                        Logger.Error(LogSource, $"Connection is no longer established. remote={ip}, file={filePath}, sentChunks={sentChunkCount}");
+                        return;
+                    }
+
+                    Logger.Debug(
+                        LogSource,
+                        $"Send window is full. remote={ip}, pendingSegments={connectionInfo.SendBuffer.PendingSegmentCount}, limit={TransmissionWindowSize}");
+                    await Task.Delay(SendWindowPollDelayMilliseconds);
+                }
+
+                Segment segment = TCPSegmentBuilder.BuildData(connectionInfo, fileChunk.Data);
+                connectionInfo.UpdateConnectionInfo(Connection.State.Established, null, segment);
+                Logger.Debug(
+                    LogSource,
+                    $"Sending file chunk. remote={ip}, chunkIndex={fileChunk.Index}, bytes={fileChunk.Data.Length}, {FormatSegment(segment)}");
+                await _udpTransport.SendSegmentAsync(
+                    SegmentSerializer.Serialize(segment),
+                    connectionInfo.Endpoint);
+
+                sentChunkCount++;
+                sentByteCount += fileChunk.Data.Length;
+                fileChunk = fileChunker.GetNextChunk();
+            }
+
+            if (!await WaitForPendingSegmentsAcknowledged(connectionInfo, ip, filePath, sentChunkCount))
+            {
+                return;
+            }
+
+            Logger.Info(
+                LogSource,
+                $"File transfer completed. remote={ip}, file={filePath}, chunks={sentChunkCount}, bytes={sentByteCount}");
+        }
+
+        public async Task StopConnection(string ip)
+        {
+            Logger.Info(LogSource, "Closing TCP connection.");
+
+            IPEndPoint endPoint = IPEndPoint.Parse(ip);
+            if(_mapConnection.TryGetValue(endPoint.ToString(), out Connection? connectionInfo) && 
+                connectionInfo.CurrentState == Connection.State.Established)
+            {
+                Segment finSegment = TCPSegmentBuilder.BuildFin(connectionInfo);
+                connectionInfo.UpdateConnectionInfo(Connection.State.FinWait1, null, finSegment);
+                Logger.Debug(LogSource, $"Sending FIN. remote={ip}, {FormatSegment(finSegment)}");
+                await _udpTransport.SendSegmentAsync(
+                    SegmentSerializer.Serialize(finSegment),
+                    connectionInfo.Endpoint);
+            }
+            _cancellationTokenSource.Cancel();
+            await _udpTransport.StopServer();
+        }
+
+        private static string FormatSegment(Segment segment)
+        {
+            return $"sequence={segment.SequenceNumber}, flags={segment.Flags}, payloadBytes={segment.Data.Length}";
+        }
+
+        private async Task<bool> WaitForPendingSegmentsAcknowledged(
+            Connection connectionInfo,
+            string ip,
+            string filePath,
+            int sentChunkCount)
+        {
+            DateTime deadline = DateTime.UtcNow.Add(_timeout);
+            bool waitLogged = false;
+
+            while (connectionInfo.SendBuffer.PendingSegmentCount > 0)
+            {
+                if (!_mapConnection.ContainsKey(connectionInfo.Endpoint.ToString()) ||
+                    connectionInfo.CurrentState != Connection.State.Established)
+                {
+                    Logger.Error(
+                        LogSource,
+                        $"Connection is no longer established while waiting for final ACKs. remote={ip}, file={filePath}, sentChunks={sentChunkCount}, pendingSegments={connectionInfo.SendBuffer.PendingSegmentCount}");
+                    return false;
+                }
+
+                if (DateTime.UtcNow >= deadline)
+                {
+                    Logger.Error(
+                        LogSource,
+                        $"Timed out waiting for final ACKs. remote={ip}, file={filePath}, sentChunks={sentChunkCount}, pendingSegments={connectionInfo.SendBuffer.PendingSegmentCount}");
+                    return false;
+                }
+
+                if (!waitLogged)
+                {
+                    Logger.Debug(
+                        LogSource,
+                        $"Waiting for final ACKs. remote={ip}, file={filePath}, pendingSegments={connectionInfo.SendBuffer.PendingSegmentCount}");
+                    waitLogged = true;
+                }
+
+                await Task.Delay(SendWindowPollDelayMilliseconds);
+            }
+
+            return true;
         }
     }
 }
