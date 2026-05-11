@@ -4,7 +4,7 @@ using System.Net.Sockets;
 
 namespace Shared.Protocol.UDP
 {
-    public class UdpTransport : IAsyncDisposable
+    public class UdpTransport : IUdpTransport, IAsyncDisposable
     {
         private const string LogSource = "udp.transport";
         private const int SioUdpConnReset = -1744830452;

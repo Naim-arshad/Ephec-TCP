@@ -196,6 +196,93 @@ public class TCPSegmentProcessorTests
     }
 
     [Fact]
+    public void Process_WithRst_ReturnsNoResponse()
+    {
+        var connection = CreateConnection();
+        var mapConnection = new ConcurrentDictionary<string, Connection>();
+
+        byte[] responseBytes = TCPSegmentProcessor.Process(
+            CreateSegment(10, FlagOptions.Rst),
+            connection,
+            mapConnection);
+
+        responseBytes.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Process_WithFinOnEstablishedConnection_ReturnsFinAckAndMovesToCloseWait()
+    {
+        var connection = CreateConnection();
+        var mapConnection = new ConcurrentDictionary<string, Connection>();
+        connection.UpdateConnectionInfo(Connection.State.Established);
+        connection.ReceiveBuffer.MarkConsumedThrough(10);
+
+        byte[] responseBytes = TCPSegmentProcessor.Process(
+            CreateSegment(11, FlagOptions.Fin),
+            connection,
+            mapConnection);
+
+        var response = SegmentParser.Deserialize(responseBytes);
+        response.Flags.Value.Should().Be((byte)(FlagOptions.Fin | FlagOptions.Ack));
+        response.Data.Should().Equal(CreateSequencePayload(10));
+        connection.CurrentState.Should().Be(Connection.State.CloseWait);
+        connection.SendBuffer.SegmentsToSend.Should().ContainKey(response.SequenceNumber);
+    }
+
+    [Fact]
+    public void Process_WithFinBeforeEstablishedConnection_ReturnsRstAndRemovesConnection()
+    {
+        var connection = CreateConnection();
+        var mapConnection = new ConcurrentDictionary<string, Connection>();
+        mapConnection[connection.Endpoint.ToString()] = connection;
+
+        byte[] responseBytes = TCPSegmentProcessor.Process(
+            CreateSegment(11, FlagOptions.Fin),
+            connection,
+            mapConnection);
+
+        var response = SegmentParser.Deserialize(responseBytes);
+        response.Flags.Value.Should().Be((byte)FlagOptions.Rst);
+        mapConnection.Should().NotContainKey(connection.Endpoint.ToString());
+    }
+
+    [Fact]
+    public void Process_WithFinAckInFinWait1_ReturnsNoResponseAndRemovesConnection()
+    {
+        var connection = CreateConnection();
+        var mapConnection = new ConcurrentDictionary<string, Connection>();
+        mapConnection[connection.Endpoint.ToString()] = connection;
+        connection.UpdateConnectionInfo(Connection.State.FinWait1);
+
+        byte[] responseBytes = TCPSegmentProcessor.Process(
+            CreateSegment(11, FlagOptions.Fin | FlagOptions.Ack, CreateSequencePayload(10)),
+            connection,
+            mapConnection);
+
+        responseBytes.Should().BeEmpty();
+        connection.CurrentState.Should().Be(Connection.State.TimeWait);
+        mapConnection.Should().NotContainKey(connection.Endpoint.ToString());
+    }
+
+    [Fact]
+    public void Process_WithFinAckOutsideFinWait1_ReturnsRstAndRemovesConnection()
+    {
+        var connection = CreateConnection();
+        var mapConnection = new ConcurrentDictionary<string, Connection>();
+        mapConnection[connection.Endpoint.ToString()] = connection;
+        connection.UpdateConnectionInfo(Connection.State.Established);
+
+        byte[] responseBytes = TCPSegmentProcessor.Process(
+            CreateSegment(11, FlagOptions.Fin | FlagOptions.Ack, CreateSequencePayload(10)),
+            connection,
+            mapConnection);
+
+        var response = SegmentParser.Deserialize(responseBytes);
+        response.Flags.Value.Should().Be((byte)FlagOptions.Rst);
+        mapConnection.Should().NotContainKey(connection.Endpoint.ToString());
+    }
+
+    [Fact]
     public void Process_WithDataSegments_FlushesAcknowledgedPayloadsToFileInSequenceOrder()
     {
         string outputPath = Path.Combine(Path.GetTempPath(), $"ephec-tcp-{Guid.NewGuid():N}.bin");

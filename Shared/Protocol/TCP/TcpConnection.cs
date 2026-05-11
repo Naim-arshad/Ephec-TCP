@@ -20,28 +20,50 @@ namespace Shared.Protocol.TCP
         private readonly static Random rand = new();
 
         private readonly ConcurrentDictionary<string, Connection> _mapConnection;
-        private readonly UdpTransport _udpTransport;
-        private readonly TcpRetransmissionHandler _retransmissionHandler;
+        private readonly IUdpTransport _udpTransport;
+        private readonly ITcpRetransmissionHandler _retransmissionHandler;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly TimeSpan _timeout;
         private readonly string? _receivedFilePath;
 
         public TcpConnection(int port, int timeout, string? receivedFilePath = "received_file.bin")
+            : this(
+                new UdpTransport(port),
+                null,
+                TimeSpan.FromSeconds(timeout),
+                receivedFilePath)
         {
+        }
+
+        internal TcpConnection(
+            IUdpTransport udpTransport,
+            ITcpRetransmissionHandler? retransmissionHandler,
+            TimeSpan timeout,
+            string? receivedFilePath = "received_file.bin")
+        {
+            ArgumentNullException.ThrowIfNull(udpTransport);
+
+            if (timeout <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(timeout), "Le timeout doit etre strictement positif.");
+            }
+
             _mapConnection = new ConcurrentDictionary<string, Connection>();
-            _udpTransport = new UdpTransport(port);
+            _udpTransport = udpTransport;
             _receivedFilePath = receivedFilePath;
             
             _udpTransport.OnSegmentReceived += OnSegmentReceived;
-            _timeout = TimeSpan.FromSeconds(timeout);
+            _timeout = timeout;
             _udpTransport.StartServer();
 
-            _retransmissionHandler = new TcpRetransmissionHandler(_udpTransport, TransmissionWindowSize);
+            _retransmissionHandler = retransmissionHandler ?? new TcpRetransmissionHandler(_udpTransport, TransmissionWindowSize);
             _ = _retransmissionHandler.LoopRetransmissions(_mapConnection, _cancellationTokenSource.Token);
             Logger.Info(
                 LogSource,
-                $"TCP connection manager started. localPort={port}, timeoutSeconds={timeout}, receiveFile={receivedFilePath ?? "disabled"}");
+                $"TCP connection manager started. timeoutSeconds={_timeout.TotalSeconds}, receiveFile={receivedFilePath ?? "disabled"}");
         }
+
+        internal IReadOnlyDictionary<string, Connection> Connections => _mapConnection;
 
         public void OnSegmentReceived(byte[] PacketBinary, IPEndPoint ip)
         {
@@ -168,7 +190,7 @@ namespace Shared.Protocol.TCP
         {
             Logger.Info(LogSource, "Closing TCP connection.");
 
-            EndPoint endPoint = IPEndPoint.Parse(ip);
+            IPEndPoint endPoint = IPEndPoint.Parse(ip);
             if(_mapConnection.TryGetValue(endPoint.ToString(), out Connection? connectionInfo) && 
                 connectionInfo.CurrentState == Connection.State.Established)
             {

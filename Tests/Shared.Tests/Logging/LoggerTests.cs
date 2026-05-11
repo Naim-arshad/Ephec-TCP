@@ -82,4 +82,35 @@ public class LoggerTests : IDisposable
         output.ToString().Should().Contain("[Info] [tcp.connection] connected");
         error.ToString().Should().BeEmpty();
     }
+
+    [Fact]
+    public void Info_WithBlankSource_WritesMessageWithoutSourceBlock()
+    {
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        Console.SetOut(output);
+        Console.SetError(error);
+        Logger.MinimumLevel = Logger.LogLevel.Debug;
+
+        Logger.Info("   ", "connected");
+
+        output.ToString().Should().Contain("[Info] connected");
+        output.ToString().Should().NotContain("[]");
+        error.ToString().Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Critical_WritesFormattedLineToStandardError()
+    {
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        Console.SetOut(output);
+        Console.SetError(error);
+        Logger.MinimumLevel = Logger.LogLevel.Debug;
+
+        Logger.Critical("fatal");
+
+        output.ToString().Should().BeEmpty();
+        error.ToString().Should().Contain("[Critical] fatal");
+    }
 }

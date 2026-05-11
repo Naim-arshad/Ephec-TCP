@@ -6,16 +6,37 @@ using System.Collections.Concurrent;
 
 namespace Shared.Protocol.TCP
 {
-    public class TcpRetransmissionHandler(UdpTransport udpTransport, int fullWindowThreshold = 256)
+    public class TcpRetransmissionHandler : ITcpRetransmissionHandler
     {
         private const string LogSource = "tcp.retransmission";
 
         //TODO : monter les info dans TCPConnection pour stantardiser les timesout
-        private readonly UdpTransport _udpTransport = udpTransport;
-        private readonly int _fullWindowThreshold = fullWindowThreshold;
+        private readonly IUdpTransport _udpTransport;
+        private readonly int _fullWindowThreshold;
+        private readonly TimeSpan _retransmissionInterval;
+        private readonly int _maxRetransmissions;
         private readonly SemaphoreSlim _semaphore = new(5);
         private const int RetransmissionTimeout = 5000; // in milliseconds
         private const int MaxRetransmissions = 5; // Maximum number of retransmissions before giving up on a segment.
+
+        public TcpRetransmissionHandler(UdpTransport udpTransport, int fullWindowThreshold = 256)
+            : this(udpTransport, fullWindowThreshold, TimeSpan.FromMilliseconds(RetransmissionTimeout), MaxRetransmissions)
+        {
+        }
+
+        internal TcpRetransmissionHandler(
+            IUdpTransport udpTransport,
+            int fullWindowThreshold = 256,
+            TimeSpan? retransmissionInterval = null,
+            int maxRetransmissions = MaxRetransmissions)
+        {
+            ArgumentNullException.ThrowIfNull(udpTransport);
+
+            _udpTransport = udpTransport;
+            _fullWindowThreshold = fullWindowThreshold;
+            _retransmissionInterval = retransmissionInterval ?? TimeSpan.FromMilliseconds(RetransmissionTimeout);
+            _maxRetransmissions = maxRetransmissions;
+        }
 
         public async Task LoopRetransmissions(
             ConcurrentDictionary<string, Connection> mapConnection,
@@ -27,12 +48,12 @@ namespace Shared.Protocol.TCP
                 throw new ArgumentNullException(nameof(mapConnection), 
                     "MapConnection cannot be null when starting the retransmission loop.");
             }
-            Logger.Info(LogSource, $"Retransmission loop started. intervalMs={RetransmissionTimeout}, maxRetransmissions={MaxRetransmissions}, fullWindowThreshold={_fullWindowThreshold}");
+            Logger.Info(LogSource, $"Retransmission loop started. intervalMs={_retransmissionInterval.TotalMilliseconds}, maxRetransmissions={_maxRetransmissions}, fullWindowThreshold={_fullWindowThreshold}");
             try
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    await Task.Delay(RetransmissionTimeout, cancellationToken);
+                    await Task.Delay(_retransmissionInterval, cancellationToken);
 
                     foreach (var connection in mapConnection)
                     {
@@ -46,7 +67,7 @@ namespace Shared.Protocol.TCP
                             bool retransmittedAnySegment = false;
                             foreach (var segment in connection.Value.GetSegmentsToRetransmit(maxSegmentsToRetransmit))
                             {
-                                if (connection.Value.RetransmissionCount < MaxRetransmissions)
+                                if (connection.Value.RetransmissionCount < _maxRetransmissions)
                                 {
                                     bool semaphoreAcquired = false;
                                     try
@@ -77,7 +98,7 @@ namespace Shared.Protocol.TCP
                                 {
                                     Logger.Error(
                                         LogSource,
-                                        $"Max retransmissions reached. remote={connection.Value.Endpoint}, sequence={segment.SequenceNumber}, max={MaxRetransmissions}, action=close-connection");
+                                        $"Max retransmissions reached. remote={connection.Value.Endpoint}, sequence={segment.SequenceNumber}, max={_maxRetransmissions}, action=close-connection");
                                     mapConnection.TryRemove(connection.Key, out _);
                                     break; // Exit the loop for this connection since it's being removed.
                                 }

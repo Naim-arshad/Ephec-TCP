@@ -60,6 +60,42 @@ public class TCPSegmentBuilderTests
         segment.Data.Should().BeEmpty();
     }
 
+    [Fact]
+    public void BuildData_ReturnsDataSegmentWithPayload()
+    {
+        var connection = CreateConnection();
+        byte[] payload = [0xCA, 0xFE];
+
+        var segment = TCPSegmentBuilder.BuildData(connection, payload);
+
+        segment.Flags.Value.Should().Be((byte)FlagOptions.None);
+        segment.Data.Should().Equal(payload);
+    }
+
+    [Fact]
+    public void BuildFin_ReturnsFinSegmentWithoutPayload()
+    {
+        var connection = CreateConnection();
+
+        var segment = TCPSegmentBuilder.BuildFin(connection);
+
+        segment.Flags.Value.Should().Be((byte)FlagOptions.Fin);
+        segment.Data.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildFinAck_ReturnsFinAckAcknowledgingLastOrderedReceivedSegment()
+    {
+        var connection = CreateConnection();
+        var receivedSegment = CreateSegment(0x9999, FlagOptions.Fin);
+        connection.ReceiveBuffer.SetLastOrderedSequenceNumber(0x1234);
+
+        var segment = TCPSegmentBuilder.BuildFinAck(connection, receivedSegment);
+
+        segment.Flags.Value.Should().Be((byte)(FlagOptions.Fin | FlagOptions.Ack));
+        segment.Data.Should().Equal([0x12, 0x34]);
+    }
+
     private static Connection CreateConnection()
     {
         return new Connection(new IPEndPoint(IPAddress.Loopback, 8080), TimeSpan.FromSeconds(5));

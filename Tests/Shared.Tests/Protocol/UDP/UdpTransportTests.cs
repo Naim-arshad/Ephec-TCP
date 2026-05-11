@@ -29,6 +29,19 @@ public class UdpTransportTests
     }
 
     [Fact]
+    public async Task StopServer_WhenCalledTwice_CompletesWithoutThrowing()
+    {
+        int serverPort = GetAvailableUdpPort();
+        await using var transport = new UdpTransport(serverPort);
+        transport.StartServer();
+
+        await transport.StopServer();
+        var act = () => transport.StopServer();
+
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
     public async Task SendSegmentAsync_SendsDatagramToRemoteEndpoint()
     {
         using var receiver = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
@@ -85,6 +98,17 @@ public class UdpTransportTests
 
         completedTask.Should().BeSameAs(received.Task);
         (await received.Task).Should().Equal(payload);
+    }
+
+    [Fact]
+    public async Task SendSegmentAsync_AfterDispose_CompletesWithoutThrowing()
+    {
+        var transport = new UdpTransport(0);
+        await transport.DisposeAsync();
+
+        var act = () => transport.SendSegmentAsync([0x01], new IPEndPoint(IPAddress.Loopback, GetAvailableUdpPort()));
+
+        await act.Should().NotThrowAsync();
     }
 
     private static int GetAvailableUdpPort()
