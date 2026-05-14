@@ -1,8 +1,5 @@
 ﻿using Shared.Logging;
-using Shared.Models;
 using Shared.Protocol.TCP;
-using System.Net;
-using System.Net.Sockets;
 
 namespace Receiver
 {
@@ -12,10 +9,20 @@ namespace Receiver
 
         static async Task Main(string[] args)
         {
-            TcpConnection connection = new(12000, 30);
-            Logger.Info(LogSource, "Starting receiver. localPort=12000, outputFile=received_file.bin");
-            Logger.Info(LogSource, "Receiver is listening. Press Enter to exit.");
-            
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine("Usage: Receiver <port> <output_file>");
+                return;
+            }
+
+            int port = int.Parse(args[0]);
+            string outputFile = args[1];
+
+            TcpConnection connection = new(port, 30, outputFile);
+            Logger.Info(LogSource, $"Receiver listening on port {port}. Output: {outputFile}");
+
+            Logger.Info(LogSource, "Press Enter to exit.");
+            Console.ReadLine();
         }
     }
 }

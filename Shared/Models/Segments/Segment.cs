@@ -8,7 +8,7 @@ namespace Shared.Models.Segments
         public SegmentFlags Flags { get; }
         public byte[] Data => [.. _data];
 
-        // Constructor
+      
         // ushort a pour seul valeur possible 16 bits non signé (0 à 65535)
         public Segment(ushort sequence, SegmentFlags flags, byte[] data)
         {
